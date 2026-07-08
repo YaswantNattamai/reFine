@@ -8,6 +8,7 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -17,6 +18,8 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.example.refine.MainActivity
+import org.json.JSONArray
+import org.json.JSONObject
 import java.lang.ref.WeakReference
 import java.util.HashMap
 
@@ -33,8 +36,38 @@ class AppLockAccessibilityService : AccessibilityService() {
         private var serviceRef: WeakReference<AppLockAccessibilityService>? = null
         private val lockedAppsMap = HashMap<String, LockedAppNative>()
 
+        private fun saveLockedAppsToPrefs(context: Context, appsJson: String) {
+            val prefs = context.getSharedPreferences("refine_locks", Context.MODE_PRIVATE)
+            prefs.edit().putString("locked_apps_list", appsJson).apply()
+        }
+
+        fun loadLockedAppsFromPrefs(context: Context) {
+            val prefs = context.getSharedPreferences("refine_locks", Context.MODE_PRIVATE)
+            val appsJson = prefs.getString("locked_apps_list", null) ?: return
+            try {
+                val jsonArray = JSONArray(appsJson)
+                lockedAppsMap.clear()
+                for (i in 0 until jsonArray.length()) {
+                    val obj = jsonArray.getJSONObject(i)
+                    val pkgName = obj.optString("packageName") ?: continue
+                    val limit = obj.optInt("dailyLimitMinutes", 0)
+                    val usageMinutes = obj.optInt("todayUsageMinutes", 0)
+                    val bypass = obj.optLong("bypassUntil", 0L)
+                    
+                    lockedAppsMap[pkgName] = LockedAppNative(
+                        packageName = pkgName,
+                        dailyLimitMinutes = limit,
+                        todayUsageSeconds = usageMinutes * 60,
+                        bypassUntil = bypass
+                    )
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
         // Update locked app list from Flutter MethodChannel
-        fun updateLockedApps(apps: List<Map<String, Any>>) {
+        fun updateLockedApps(context: Context, apps: List<Map<String, Any>>) {
             // Backup existing in-memory usage seconds to preserve precision
             val oldUsageSeconds = HashMap<String, Int>()
             for (app in lockedAppsMap.values) {
@@ -42,6 +75,7 @@ class AppLockAccessibilityService : AccessibilityService() {
             }
 
             lockedAppsMap.clear()
+            val jsonArray = JSONArray()
             for (app in apps) {
                 val pkgName = app["packageName"] as? String ?: continue
                 val limit = (app["dailyLimitMinutes"] as? Number)?.toInt() ?: 0
@@ -57,7 +91,16 @@ class AppLockAccessibilityService : AccessibilityService() {
                     todayUsageSeconds = finalSeconds,
                     bypassUntil = bypass
                 )
+
+                val obj = JSONObject().apply {
+                    put("packageName", pkgName)
+                    put("dailyLimitMinutes", limit)
+                    put("todayUsageMinutes", finalSeconds / 60)
+                    put("bypassUntil", bypass)
+                }
+                jsonArray.put(obj)
             }
+            saveLockedAppsToPrefs(context, jsonArray.toString())
             // Trigger check on active package
             serviceRef?.get()?.checkActiveLock()
         }
@@ -92,6 +135,40 @@ class AppLockAccessibilityService : AccessibilityService() {
         "com.miui.home" // Xiaomi System Launcher
     )
 
+    private var lastCheckDay = -1
+
+    private fun checkMidnightReset() {
+        val calendar = java.util.Calendar.getInstance()
+        val currentDay = calendar.get(java.util.Calendar.DAY_OF_YEAR)
+        if (lastCheckDay == -1) {
+            val prefs = getSharedPreferences("refine_locks", Context.MODE_PRIVATE)
+            lastCheckDay = prefs.getInt("last_reset_day", currentDay)
+        }
+        if (currentDay != lastCheckDay) {
+            for (app in lockedAppsMap.values) {
+                app.todayUsageSeconds = 0
+                app.bypassUntil = 0L
+            }
+            lastCheckDay = currentDay
+            val prefs = getSharedPreferences("refine_locks", Context.MODE_PRIVATE)
+            prefs.edit().putInt("last_reset_day", currentDay).apply()
+            
+            val jsonArray = JSONArray()
+            for (app in lockedAppsMap.values) {
+                val obj = JSONObject().apply {
+                    put("packageName", app.packageName)
+                    put("dailyLimitMinutes", app.dailyLimitMinutes)
+                    put("todayUsageMinutes", 0)
+                    put("bypassUntil", 0L)
+                }
+                jsonArray.put(obj)
+            }
+            prefs.edit().putString("locked_apps_list", jsonArray.toString()).apply()
+            
+            MainActivity.notifyPackageChange()
+        }
+    }
+
     private val timerRunnable = object : Runnable {
         override fun run() {
             // Dynamically recover active package from root window if state was temporarily lost
@@ -100,14 +177,26 @@ class AppLockAccessibilityService : AccessibilityService() {
                 activePackageName = currentPkg
             }
 
-            activePackageName?.let { pkg ->
-                val app = lockedAppsMap[pkg]
-                if (app != null && !excludedPackages.contains(pkg)) {
-                    val now = System.currentTimeMillis()
-                    if (now > app.bypassUntil) {
-                        app.todayUsageSeconds += 5
-                        // Trigger check
-                        checkActiveLock()
+            checkMidnightReset()
+
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val isScreenInteractive = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
+                pm.isInteractive
+            } else {
+                @Suppress("DEPRECATION")
+                pm.isScreenOn
+            }
+
+            if (isScreenInteractive) {
+                activePackageName?.let { pkg ->
+                    val app = lockedAppsMap[pkg]
+                    if (app != null && !excludedPackages.contains(pkg)) {
+                        val now = System.currentTimeMillis()
+                        if (now > app.bypassUntil) {
+                            app.todayUsageSeconds += 5
+                            // Trigger check
+                            checkActiveLock()
+                        }
                     }
                 }
             }
@@ -118,6 +207,7 @@ class AppLockAccessibilityService : AccessibilityService() {
     override fun onCreate() {
         super.onCreate()
         serviceRef = WeakReference(this)
+        loadLockedAppsFromPrefs(this)
         handler.post(timerRunnable)
     }
 

@@ -119,9 +119,10 @@ class _TodoChecklistsPageState extends ConsumerState<TodoChecklistsPage> {
                               const Divider(color: Colors.white10),
                               
                               // List Items
-                              ...list.items.map((item) {
+                              ...(list.items.toList()..sort((a, b) => a.id.compareTo(b.id))).map((item) {
                                 final isDone = item.isCompleted;
                                 return Padding(
+                                  key: ValueKey(item.id),
                                   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
                                   child: AnimatedContainer(
                                     duration: const Duration(milliseconds: 200),

@@ -82,7 +82,7 @@ class MainActivity : FlutterActivity() {
                 "updateLockedApps" -> {
                     val appsList = call.argument<List<Map<String, Any>>>("apps")
                     if (appsList != null) {
-                        AppLockAccessibilityService.updateLockedApps(appsList)
+                        AppLockAccessibilityService.updateLockedApps(this, appsList)
                         result.success(true)
                     } else {
                         result.error("BAD_ARGS", "Missing apps list", null)
