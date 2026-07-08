@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'todo_provider.dart';
-import '../../database/collections/todo_list.dart';
+
 
 class TodoChecklistsPage extends ConsumerStatefulWidget {
   const TodoChecklistsPage({super.key});
@@ -164,7 +164,7 @@ class _TodoChecklistsPageState extends ConsumerState<TodoChecklistsPage> {
                                     ),
                                   ),
                                 );
-                              }).toList(),
+                              }),
 
                               // Add item input row inside the list expansion
                               Padding(

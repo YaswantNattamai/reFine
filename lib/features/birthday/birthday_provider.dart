@@ -1,6 +1,5 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:isar/isar.dart';
 import '../../database/collections/birthday.dart';
 import '../../database/collections/todo_list.dart';
 import '../../database/isar_service.dart';
