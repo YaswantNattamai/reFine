@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
-import 'dart:io';
 import '../settings/system_settings_provider.dart';
 import '../launcher/launcher_provider.dart';
 import '../launcher/app_info.dart';
@@ -15,37 +14,6 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
-  late Timer _timer;
-  late DateTime _now;
-
-  @override
-  void initState() {
-    super.initState();
-    _now = DateTime.now();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          _now = DateTime.now();
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer.cancel();
-    super.dispose();
-  }
-
-  String _formatMonth(int month) {
-    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    return months[month - 1];
-  }
-
-  String _formatWeekday(int weekday) {
-    const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
-    return days[weekday - 1];
-  }
 
   Color _getGridBoxColor(double percentage) {
     if (percentage < 0.0) return Colors.grey.shade800; // Neutral day
@@ -57,11 +25,6 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final hour = _now.hour.toString().padLeft(2, '0');
-    final minute = _now.minute.toString().padLeft(2, '0');
-    final dateString = "${_now.day} ${_formatMonth(_now.month)}";
-    final weekdayString = _formatWeekday(_now.weekday);
-
     // Watch settings and launcher
     final settingsState = ref.watch(systemSettingsProvider);
     final launcherState = ref.watch(launcherNotifierProvider);
@@ -69,6 +32,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     final weekProgressState = ref.watch(currentWeekProgressProvider);
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: Colors.transparent, // Transparent to allow launcher shell wallpaper to show
       body: SafeArea(
         child: SizedBox(
@@ -77,31 +41,12 @@ class _HomePageState extends ConsumerState<HomePage> {
             padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // 1. Time, Day & Date (Premium Top Clock)
-              const SizedBox(height: 20),
-              Text(
-                "$hour:$minute",
-                style: const TextStyle(
-                  fontSize: 72,
-                  fontWeight: FontWeight.w200,
-                  color: Colors.white,
-                  letterSpacing: 2,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                "$weekdayString, $dateString",
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w400,
-                  color: Colors.white70,
-                  letterSpacing: 1.5,
-                ),
-              ),
-              const SizedBox(height: 48),
+              children: [
+                // 1. Time, Day & Date (Premium Top Clock)
+                const ClockWidget(),
+                const SizedBox(height: 48),
 
-              // 2. Vertical list of chosen apps (Customizable App List Widget)
+                // 2. Vertical list of chosen apps (Customizable App List Widget)
               Expanded(
                 child: Container(
                   width: MediaQuery.of(context).size.width * 0.8,
@@ -422,3 +367,78 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 }
+
+class ClockWidget extends StatefulWidget {
+  const ClockWidget({super.key});
+
+  @override
+  State<ClockWidget> createState() => _ClockWidgetState();
+}
+
+class _ClockWidgetState extends State<ClockWidget> {
+  late Timer _timer;
+  late DateTime _now;
+
+  @override
+  void initState() {
+    super.initState();
+    _now = DateTime.now();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _now = DateTime.now();
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  String _formatMonth(int month) {
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    return months[month - 1];
+  }
+
+  String _formatWeekday(int weekday) {
+    const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+    return days[weekday - 1];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hour = _now.hour.toString().padLeft(2, '0');
+    final minute = _now.minute.toString().padLeft(2, '0');
+    final dateString = "${_now.day} ${_formatMonth(_now.month)}";
+    final weekdayString = _formatWeekday(_now.weekday);
+
+    return Column(
+      children: [
+        const SizedBox(height: 20),
+        Text(
+          "$hour:$minute",
+          style: const TextStyle(
+            fontSize: 72,
+            fontWeight: FontWeight.w200,
+            color: Colors.white,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          "$weekdayString, $dateString",
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
+            color: Colors.white70,
+            letterSpacing: 1.5,
+          ),
+        ),
+      ],
+    );
+  }
+}
+

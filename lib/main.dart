@@ -94,6 +94,9 @@ class _LauncherShellState extends State<LauncherShell> {
           PageView(
             controller: _pageController,
             physics: const BouncingScrollPhysics(),
+            onPageChanged: (index) {
+              FocusScope.of(context).unfocus();
+            },
             children: const [
               AppListPage(),    // Page 1: App List (Index 0)
               HomePage(),       // Page 2: Home Page (Index 1 - Default)

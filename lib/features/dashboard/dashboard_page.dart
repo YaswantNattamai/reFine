@@ -101,6 +101,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     final completionsState = ref.watch(todayCompletionsProvider);
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Padding(
