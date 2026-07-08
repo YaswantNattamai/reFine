@@ -1,0 +1,351 @@
+========================================================================
+                      reFine - END-TO-END ARCHITECTURE REPORT
+========================================================================
+
+Author: Antigravity AI Pair Programming Companion
+Date: June 23, 2026
+Project Location: c:\VOLUME A\ReFine
+File Name: EndtoEndArc.text
+
+This report outlines the end-to-end architecture of the "reFine" minimal, 
+focus-oriented launcher and productivity application. It describes every 
+package used, lists every folder and file in the codebase with their 
+responsibilities, and details the technical challenges and errors resolved.
+
+------------------------------------------------------------------------
+1. DEPENDENCIES & LIBRARIES USED (pubspec.yaml)
+------------------------------------------------------------------------
+The project utilizes Flutter and Dart SDK (^3.11.5) with the following 
+external dependencies:
+
+* flutter_riverpod: ^2.5.1
+  Used as the central state management framework. It provides robust 
+  and reactive dependency injection, state caching, and automated UI 
+  re-evaluation.
+  
+* isar: ^3.1.0+1
+  An ultra-fast, cross-platform NoSQL database designed specifically 
+  for Flutter. It handles all persistent storage of user tasks, 
+  checklists, workouts, journal logs, and application configurations.
+
+* isar_flutter_libs: ^3.1.0+1
+  Contains binaries and platform-specific code necessary to load and run 
+  Isar on target operating systems (e.g., Android).
+
+* path_provider: ^2.1.2
+  Provides access to common local file system directories (e.g. temporary, 
+  application documents, application support) for database storage 
+  and wallpaper management.
+
+* flutter_local_notifications: ^17.1.2
+  Used for local notifications, specifically to trigger and display 
+  notifications for user birthdays and task reminders.
+
+* cupertino_icons: ^1.0.8
+  A font asset bundle for iOS style icons used inside the Material Design UI.
+
+* Dev Dependencies:
+  - build_runner: ^2.4.9
+    Generates code files for database serialization.
+  - isar_generator: ^3.1.0+1
+    Code generator for Isar database adapters, generating collection schemas.
+  - flutter_lints: ^6.0.0
+    Encourages best coding practices and styling consistency.
+
+------------------------------------------------------------------------
+2. SYSTEM ARCHITECTURE SUMMARY
+------------------------------------------------------------------------
+The application is structured into three primary architectural layers:
+
+1. UI & Feature Layer (lib/features/):
+   Contains screen interfaces, page layouts, widget components, and Riverpod 
+   state providers mapped to specific capabilities (e.g., app search, 
+   timetable, workout tracker).
+
+2. Repository Layer (lib/repositories/):
+   Acts as the data broker between features and the Isar Database. 
+   Capsules database query logic, atomic read/write transactions, and 
+   recalculation metrics (e.g., updating today's stats on task completion).
+
+3. Database & Schema Layer (lib/database/):
+   Defines the Isar NoSQL collections, schema structures, and initialization 
+   service.
+
+------------------------------------------------------------------------
+3. DIRECTORY STRUCTURE & FILE DIRECTORY
+------------------------------------------------------------------------
+
+=== ROOT ===
+* lib/main.dart
+  The entry point of the Flutter application. It runs the MaterialApp, 
+  initializes Riverpod, sets up the permissions onboarding guard, 
+  renders the main `LauncherShell` (which implements a pageview-based 
+  scrolling layout), and hosts the dynamic `WallpaperBackground` widget.
+
+=== DATABASE LAYER (lib/database/) ===
+* lib/database/isar_service.dart
+  Handles database connection, schema migration, and lazy instantiation. 
+  It registers all Isar schemas and exposes a Riverpod provider to 
+  obtain database instances.
+
+=== DATABASE SCHEMAS (lib/database/collections/) ===
+These files define the database schema models. Each `.dart` collection 
+file has a corresponding generated `.g.dart` file containing Isar adapter 
+code:
+
+* lib/database/collections/birthday.dart
+  Schema representing a friend's birthday record (name, date).
+* lib/database/collections/daily_stats.dart
+  Tracks daily task completions and wallpaper unlocked state.
+* lib/database/collections/journal_entry.dart
+  Represents daily thoughts, content, and the entry date.
+* lib/database/collections/locked_app.dart
+  Represents applications blocked by App Locker and their limits.
+* lib/database/collections/motivation.dart
+  Holds custom quotes or text inside the motivation bank.
+* lib/database/collections/settings.dart
+  General launcher configuration (e.g., selected wallpaper path, 
+  favorites apps list, quote visibility, and unlocked threshold).
+* lib/database/collections/task.dart
+  Stores timetable tasks (startTime, endTime, repeat weekdays, date).
+* lib/database/collections/task_completion.dart
+  Logs completions of tasks (matches taskId, date, and completed status).
+* lib/database/collections/todo_item.dart
+  Represents a single checkbox item in a custom todo checklist.
+* lib/database/collections/todo_list.dart
+  Parent schema holding multiple custom checklists (todo items).
+* lib/database/collections/widget_config.dart
+  Stores custom layouts or heights of widgets.
+* lib/database/collections/workout.dart
+  Represents workout routines (name, scheduled sets, reps count).
+* lib/database/collections/workout_set_progress.dart
+  Tracks completed sets progress for individual workouts.
+
+=== REPOSITORY LAYER (lib/repositories/) ===
+Encapsulates all database operations, keeping them decoupled from the UI:
+
+* lib/repositories/birthday_repository.dart
+  Handles queries to list, add, delete, and find upcoming birthdays.
+* lib/repositories/journal_repository.dart
+  Handles adding, deleting, and fetching date-wise journal entries.
+* lib/repositories/motivation_repository.dart
+  Retrieves quotes from the motivation bank collection.
+* lib/repositories/task_repository.dart
+  Executes logic for listing tasks, deleting them, and toggling task 
+  completions inside atomic transactions, updating `DailyStats` concurrently.
+* lib/repositories/todo_repository.dart
+  Inserts and updates custom checklists and their todo sub-items.
+* lib/repositories/workout_repository.dart
+  Handles workout queries, set completion updates, and progress state.
+
+=== FEATURE LAYER (lib/features/) ===
+Organized as self-contained feature subfolders, keeping code modular:
+
+--- App Locker (lib/features/app_locker/) ---
+* lib/features/app_locker/app_lock_provider.dart
+  Provides a notifier to view, check, and configure locked apps and 
+  verify passwords. Emits signals to native Android accessibility overlay.
+
+--- App Search (lib/features/app_search/) ---
+* lib/features/app_search/search_page.dart
+  Lists launcher search inputs. Filters applications instantly on keyboard 
+  input.
+* lib/features/app_search/search_provider.dart
+  Manages search text query states and filters lists.
+
+--- Birthday (lib/features/birthday/) ---
+* lib/features/birthday/birthday_settings_page.dart
+  Allows users to create, delete, and view upcoming birthdays.
+* lib/features/birthday/birthday_provider.dart
+  Loads upcoming birthdays lists.
+
+--- Dashboard / Widget Central (lib/features/dashboard/) ---
+* lib/features/dashboard/dashboard_page.dart
+  The widget screen. Builds the Timetable list and Workout set trackers. 
+  Handles widgets' collapse/expand sizes and highlight sorting.
+
+--- Home Page (lib/features/home/) ---
+* lib/features/home/home_page.dart
+  The main page showing clock, favorites app tiles list, daily motivation 
+  quotes, and the 7-day GitHub-style Week Progress grid.
+
+--- Journal (lib/features/journal/) ---
+* lib/features/journal/journal_entries_page.dart
+  Interactive scrolling calendar/list screen displaying thoughts chronologically. 
+  Exposes the "Add Journal Entry" bottom sheet input popup.
+* lib/features/journal/journal_provider.dart
+  Notifier tracking list states and inserting new entries.
+
+--- Launcher Services (lib/features/launcher/) ---
+* lib/features/launcher/app_info.dart
+  Data structure for installed applications (package, label).
+* lib/features/launcher/launcher_provider.dart
+  Exposes list changes and handles launching apps on click.
+* lib/features/launcher/launcher_service.dart
+  Coordinates package queries and lifecycle notifications.
+
+--- Motivation (lib/features/motivation/) ---
+* lib/features/motivation/motivation_bank_page.dart
+  Displays quotes database. Allows custom additions/deletions.
+* lib/features/motivation/motivation_provider.dart
+  Selects and caches daily quotes.
+
+--- Onboarding Permissions (lib/features/onboarding/) ---
+* lib/features/onboarding/permission_onboarding_page.dart
+  Visual setup checklist explaining overlay, notifications, and accessibility.
+* lib/features/onboarding/permission_provider.dart
+  Verifies Android operating system authorization requirements.
+
+--- Settings (lib/features/settings/) ---
+* lib/features/settings/settings_page.dart
+  Menu listing subpage navigation tiles.
+* lib/features/settings/system_settings_page.dart
+  Configures theme values, wallpaper paths, and locker lock thresholds.
+* lib/features/settings/system_settings_provider.dart
+  Manages settings profiles and computes week progress percentages.
+
+--- Timetable (lib/features/timetable/) ---
+* lib/features/timetable/timetable_settings_page.dart
+  Configures repeatable schedule tasks, starting/ending hours, and weekday loops.
+* lib/features/timetable/timetable_provider.dart
+  Refreshes daily schedule structures on modifications.
+
+--- To Do Checklists (lib/features/todo/) ---
+* lib/features/todo/todo_checklists_page.dart
+  Allows creation of multiple list instances (e.g. Groceries, Shopping, packing).
+* lib/features/todo/todo_provider.dart
+  Manages checklist additions and item completions.
+
+--- Workout Planner (lib/features/workout/) ---
+* lib/features/workout/workout_settings_page.dart
+  Defines workouts, scheduled sets, reps count, and target loop days.
+* lib/features/workout/workout_provider.dart
+  Checks completions of sets and handles workout routines lists.
+
+=== PLATFORM SPECIFIC: ANDROID MAIN FILES (android/app/src/main/) ===
+* MainActivity.kt
+  The main Android launcher activity handling default launcher checks, method 
+  channel routing, and package installs.
+* receivers/AppInstallReceiver.kt
+  Broadcast receiver to automatically reload Flutter app list on package updates.
+* receivers/BirthdayAlarmReceiver.kt
+  Broadcast receiver waking up the app to push birthday notifications.
+* receivers/BootReceiver.kt
+  Broadcast receiver rescheduling alarms on OS launch.
+* services/AppLockAccessibilityService.kt
+  Background Accessibility Service inspecting foreground application. Intercepts 
+  access if blocked by showing custom lock overlays.
+* services/NotificationScheduler.kt
+  Helper library scheduling system alarm loops.
+
+------------------------------------------------------------------------
+4. ERRORS ENCOUNTERED & RESOLUTIONS IMPLEMENTED
+------------------------------------------------------------------------
+
+* ERROR 1: App Locker limits query crash with type 'lockedApp'
+  - Symptoms: Casting or mapping queries from Isar collections failed 
+    on types.
+  - Resolution: Cleaned up class imports, deleted duplicate cache references, 
+    and added concrete type parameters (`whereType<LockedApp>()`) to all Isar 
+    returns to ensure types are resolved accurately.
+
+* ERROR 2: To-Do Checklist "+" button was broken
+  - Symptoms: Clicking the "+" button to add custom checklists did not 
+    trigger database saves.
+  - Resolution: Fixed state notification routing, hooked the button up to 
+    the proper `todo_provider` notifier method, and refreshed list states 
+    correctly.
+
+* ERROR 3: Timetable checking blinking the entire page
+  - Symptoms: Checking a task box in the Timetable widget caused the whole 
+    screen/widget to blink/disappear for a millisecond.
+  - Resolution: 
+    1. Removed `state = const AsyncValue.loading()` from timetable state 
+       mutations.
+    2. Swapped standard `.when` future builders in `dashboard_page.dart` 
+       for `.valueOrNull` checks. This keeps cached tasks visible in the 
+       UI during database refreshes instead of flashing a loading spinner.
+
+* ERROR 4: Search screen app list reset issue
+  - Symptoms: Searching for an app (like YouTube), launching it, and 
+    exiting it back to the launcher left the search result list stuck 
+    with only the searched app, hiding the rest of the app list.
+  - Resolution: Replaced the direct `onChanged` TextField handler in 
+    `search_page.dart` with a `TextEditingController` listener. Now, 
+    clearing the text box programmatically on launcher resume correctly 
+    resets the Riverpod query notifier, instantly listing all installed 
+    apps.
+
+* ERROR 5: Keyboard resizing layout overflow
+  - Symptoms: When opening the search keyboard, the main shell layout 
+    resized, throwing overflow errors.
+  - Resolution: Set `resizeToAvoidBottomInset: false` on the main Scaffold 
+    in `main.dart` to maintain layout sizing when the keyboard opens.
+
+* ERROR 6: Week Progress grid today box not updating
+  - Symptoms: Checking tasks today didn't change today's grid box color. 
+    It stayed grey.
+  - Resolution: 
+    1. Changed the future rendering filter in `home_page.dart` from 
+       `isBeforeToday` to `!isFutureDay` to keep today's box colored.
+    2. Watched `todayCompletionsProvider` inside `currentWeekProgressProvider`, 
+       `todayStatsProvider`, and `weeklyCompletionStatsProvider` to force 
+       dynamic updates when a task is checked/unchecked.
+    3. Replaced `.when()` and `.maybeWhen()` in the Week Progress UI with 
+       synchronous evaluations using `.valueOrNull`. This prevents the 
+       entire widget from reloading with a spinner and resetting to `0%` 
+       during transitions.
+
+* ERROR 7: Journal entries sorting & overlaps
+  - Symptoms: Journal entries list was not sorted backwards (newest first) 
+    and input textfield labels ran through the boundaries.
+  - Resolution:
+    1. Sorted Isar queries in `journal_repository.dart` by date descending.
+    2. Added `contentPadding` and `alignLabelWithHint: true` to the 
+       multiline text fields in `AddJournalEntryBottomSheet`.
+
+* ERROR 8: Active task highlighting & sorting
+  - Symptoms: Active tasks were hard to distinguish and did not stay pinned 
+    on top.
+  - Resolution:
+    1. Modified `_sortTasksWithActiveOnTop` to place active uncompleted 
+       (white) tasks at the absolute top, followed by active completed 
+       (green) tasks.
+    2. Changed time labels on active/completed tiles to solid black text 
+       for high contrast, and made inactive tasks a clear dark blue-grey.
+
+* ERROR 9: Wallpaper background blinking
+  - Symptoms: Completing tasks caused the wallpaper image to briefly flash 
+    solid black.
+  - Resolution: Avoided using state loaders that reset providers to null, 
+    ensuring `todayStatsProvider.valueOrNull` keeps its cached unlocked 
+    state throughout the re-evaluation transition.
+
+* ERROR 10: App Locker Sync, Persistence, and Reset Flaws
+  - Symptoms: App usage limits reset to 0 whenever the launcher restarted or settings were changed, and usage tracked in-memory was lost upon background process termination or system reboot. Additionally, lock limits did not reset daily at midnight.
+  - Resolution: 
+    1. Added `lastResetDate` to the `LockedApp` collection schema to persist reset dates.
+    2. Modified `AppLockAccessibilityService.kt` to preserve in-memory progress and seconds precision during syncs, except for explicit daily resets.
+    3. Updated `AppLockNotifier` to retrieve native logs before database updates, perform midnight resets, and set up a 30-second periodic timer to merge and persist usage from the native service to the database.
+    4. Fixed home screen transitions in `AppLockAccessibilityService.kt` by checking if the overlay is showing before returning early. This stops tracking YouTube when returning home, allowing the tracking state to reset correctly.
+    5. Added dynamic active window package recovery using `rootInActiveWindow` in the periodic timer to ensure volume bars, notification drawer opens, or dialog keyboard switches don't permanently halt target app usage tracking.
+
+* ERROR 11: Dashboard Timetable and Workout widgets alignment
+  - Symptoms: Timetable and Workout Planner cards/lists on the "Today" page were pushed towards the left and not centered properly.
+  - Resolution: Wrapped the main Column of `DashboardPage` in a `SizedBox(width: double.infinity)` inside `lib/features/dashboard/dashboard_page.dart` to force children elements to center relative to the full screen width.
+
+* ERROR 12: Timetable tasks and workouts not auto-refreshing at midnight
+  - Symptoms: When the system clock transition over midnight occurred, the current day's tasks, completions, and workout logs did not clear or update dynamically.
+  - Resolution: Created `currentDateProvider` in `lib/features/timetable/current_date_provider.dart` which uses a periodic timer to track date transitions. Integrated this provider across `timetable_provider.dart`, `workout_provider.dart`, and `system_settings_provider.dart` to automatically trigger state refreshes at midnight, resetting all completions and statistics dynamically.
+
+* ERROR 13: Birthday notifications only at 9 AM instead of midnight and 9 AM
+  - Symptoms: The user wanted birthday notifications at exactly 12:00 AM (midnight) to wish contacts immediately, but notifications were only scheduled at 9:00 AM.
+  - Resolution: Modified Kotlin scheduling logic (`NotificationScheduler.kt`, `BirthdayAlarmReceiver.kt`, and `BootReceiver.kt`) to register two separate alarms per birthday. Used distinct request codes (`9999` and `8888`) with the Android `AlarmManager` to prevent one alarm from overriding or canceling the other.
+
+* ERROR 14: Todo checklist flickering on adding or deleting items
+  - Symptoms: Adding a new item to a checklist or list triggered a brief spinner, causing the layout to flash and expand/collapse list items.
+  - Resolution: Removed the intermediate `state = const AsyncValue.loading()` updates during modifications in `TodoNotifier` inside `lib/features/todo/todo_provider.dart`. State transitions now complete seamlessly directly into data values.
+
+========================================================================
+                               END OF REPORT
+========================================================================
