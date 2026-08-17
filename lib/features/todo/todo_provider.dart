@@ -32,51 +32,95 @@ class TodoNotifier extends StateNotifier<AsyncValue<List<TodoList>>> {
     }
   }
 
-  Future<void> addTodoList(String title) async {
+  Future<TodoList?> addTodoList(String title) async {
     try {
-      await _todoRepository.addTodoList(title);
-      await loadTodoLists();
+      final list = await _todoRepository.addTodoList(title);
+      final current = state.valueOrNull;
+      if (current != null) {
+        state = AsyncValue.data([...current, list]);
+      } else {
+        await loadTodoLists();
+      }
+      return list;
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      return null;
     }
   }
 
   Future<void> deleteTodoList(int listId) async {
+    final current = state.valueOrNull;
+    if (current != null) {
+      state = AsyncValue.data(current.where((l) => l.id != listId).toList());
+    }
     try {
       await _todoRepository.deleteTodoList(listId);
-      await loadTodoLists();
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      await loadTodoLists();
     }
   }
 
   Future<void> addTodoItem(int listId, String text) async {
+    final item = TodoItem()
+      ..text = text
+      ..isCompleted = false;
     try {
-      final item = TodoItem()
-        ..text = text
-        ..isCompleted = false;
       await _todoRepository.addTodoItem(listId, item);
-      await loadTodoLists();
+      final current = state.valueOrNull;
+      if (current != null) {
+        for (var list in current) {
+          if (list.id == listId) {
+            list.items.add(item);
+            break;
+          }
+        }
+        state = AsyncValue.data(List.of(current));
+      } else {
+        await loadTodoLists();
+      }
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      await loadTodoLists();
     }
   }
 
   Future<void> toggleTodoItem(int itemId, bool completed) async {
+    // Apply locally first so the checkbox responds instantly instead of
+    // waiting on a full DB round-trip + list re-fetch (which was visible as
+    // a jarring full-page "reload" on every single tap).
+    final current = state.valueOrNull;
+    if (current != null) {
+      for (var list in current) {
+        for (var item in list.items) {
+          if (item.id == itemId) {
+            item.isCompleted = completed;
+          }
+        }
+      }
+      state = AsyncValue.data(List.of(current));
+    }
     try {
       await _todoRepository.toggleTodoItem(itemId, completed);
-      await loadTodoLists();
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      await loadTodoLists();
     }
   }
 
   Future<void> deleteTodoItem(int itemId) async {
+    final current = state.valueOrNull;
+    if (current != null) {
+      for (var list in current) {
+        list.items.removeWhere((item) => item.id == itemId);
+      }
+      state = AsyncValue.data(List.of(current));
+    }
     try {
       await _todoRepository.deleteTodoItem(itemId);
-      await loadTodoLists();
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      await loadTodoLists();
     }
   }
 }

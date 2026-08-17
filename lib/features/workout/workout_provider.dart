@@ -38,7 +38,7 @@ class WorkoutNotifier extends StateNotifier<AsyncValue<List<Workout>>> {
   }
 
   Future<void> addWorkout(Workout workout) async {
-    state = const AsyncValue.loading();
+    // No intermediate loading flash over the existing list for a simple add.
     try {
       await _workoutRepository.addWorkout(workout);
       await loadWorkouts();
@@ -48,13 +48,16 @@ class WorkoutNotifier extends StateNotifier<AsyncValue<List<Workout>>> {
   }
 
   Future<void> deleteWorkout(int id) async {
-    state = const AsyncValue.loading();
+    final current = state.valueOrNull;
+    if (current != null) {
+      state = AsyncValue.data(current.where((w) => w.id != id).toList());
+    }
     try {
       await _workoutRepository.deleteWorkout(id);
-      await loadWorkouts();
       _ref.invalidate(todayWorkoutProgressProvider);
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      await loadWorkouts();
     }
   }
 

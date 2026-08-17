@@ -14,10 +14,18 @@ class SearchState {
 
 class SearchNotifier extends StateNotifier<SearchState> {
   final Ref _ref;
-  final List<AppInfo> _allApps;
+  List<AppInfo> _allApps;
 
   SearchNotifier(this._ref, this._allApps) : super(SearchState(query: '', filteredApps: _allApps)) {
     _filterApps(state.query, _allApps);
+    // Listen (rather than watch) for later app-list refreshes so this
+    // notifier isn't torn down and recreated every time - that reset the
+    // query to '' and snapped the filtered results back to the full list
+    // out from under whatever the user was actively typing.
+    _ref.listen<LauncherState>(launcherNotifierProvider, (previous, next) {
+      _allApps = next.apps;
+      _filterApps(state.query, _allApps);
+    });
   }
 
   // Set the search query and filter the app list
@@ -72,6 +80,8 @@ class SearchNotifier extends StateNotifier<SearchState> {
 }
 
 final searchNotifierProvider = StateNotifierProvider<SearchNotifier, SearchState>((ref) {
-  final launcherState = ref.watch(launcherNotifierProvider);
+  // Read (not watch) so this provider - and the SearchNotifier it holds -
+  // isn't rebuilt from scratch every time the app list refreshes.
+  final launcherState = ref.read(launcherNotifierProvider);
   return SearchNotifier(ref, launcherState.apps);
 });

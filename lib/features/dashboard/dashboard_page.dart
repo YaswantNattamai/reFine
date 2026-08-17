@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../timetable/timetable_provider.dart';
+import '../timetable/current_date_provider.dart';
 import '../workout/workout_provider.dart';
 import '../../database/collections/task.dart';
 import '../../database/collections/task_completion.dart';
@@ -75,6 +76,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     bool allSetsChecked = false;
     if (todayWorkouts.isNotEmpty) {
       allSetsChecked = workoutProgressState.maybeWhen(
+        skipLoadingOnReload: true,
         data: (progressList) {
           int completedCount = 0;
           for (var workout in todayWorkouts) {
@@ -336,6 +338,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                   child: Text("No workouts scheduled for today.", style: TextStyle(color: Colors.white38, fontSize: 14)),
                 )
               : workoutProgressState.when(
+                  skipLoadingOnReload: true,
                   loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
                   error: (err, _) => Center(child: Text("Error: $err", style: const TextStyle(color: Colors.red))),
                   data: (progressList) {
@@ -360,6 +363,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                             setsCompleted.every((val) => val);
 
                         return Padding(
+                          key: ValueKey(workout.id),
                           padding: const EdgeInsets.only(bottom: 16.0),
                           child: Container(
                             decoration: BoxDecoration(
@@ -406,9 +410,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                                         checkColor: Colors.green,
                                         value: isSetDone,
                                         onChanged: (val) {
+                                          final date = ref.read(currentDateProvider).value ?? DateTime.now();
                                           ref.read(workoutNotifierProvider.notifier).toggleWorkoutSet(
                                                 workout.id,
-                                                DateTime.now(),
+                                                date,
                                                 setIdx,
                                                 val ?? false,
                                               );
@@ -502,6 +507,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
         }
 
         return Padding(
+          key: ValueKey(task.id),
           padding: EdgeInsets.only(bottom: isExpanded ? 12.0 : 8.0),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 250),
@@ -533,9 +539,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                 side: BorderSide(color: textColor.withOpacity(0.6), width: 2),
                 value: isDone,
                 onChanged: (val) {
+                  final date = ref.read(currentDateProvider).value ?? DateTime.now();
                   ref
                       .read(timetableNotifierProvider.notifier)
-                      .toggleTaskCompletion(task.id, DateTime.now(), val ?? false);
+                      .toggleTaskCompletion(task.id, date, val ?? false);
                 },
               ),
             ),

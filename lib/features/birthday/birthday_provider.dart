@@ -40,11 +40,41 @@ class BirthdayNotifier extends StateNotifier<AsyncValue<List<Birthday>>> {
 
   Future<void> _checkAndAddBirthdayTodos(List<Birthday> birthdays) async {
     final now = DateTime.now();
+
+    // Reset the "handled today" flag for any birthday whose day has passed,
+    // so the reminder isn't permanently suppressed on future occurrences.
+    // Also clean up its now-stale "Wish X" item so the Today list doesn't
+    // accumulate reminders from birthdays that have already passed.
+    bool anyFlagChanged = false;
+    for (var birthday in birthdays) {
+      final isToday = birthday.birthDate.month == now.month && birthday.birthDate.day == now.day;
+      if (!isToday && birthday.checkedToday) {
+        await _birthdayRepository.checkBirthdayToday(birthday.id, false);
+        anyFlagChanged = true;
+
+        final taskText = 'Wish "${birthday.name}"';
+        final todoLists = _ref.read(todoNotifierProvider).valueOrNull ?? [];
+        for (var list in todoLists) {
+          for (var item in list.items) {
+            if (item.text == taskText) {
+              await _ref.read(todoNotifierProvider.notifier).deleteTodoItem(item.id);
+            }
+          }
+        }
+      }
+    }
+
     final todayBirthdays = birthdays.where((b) {
-      return b.birthDate.month == now.month && b.birthDate.day == now.day;
+      return b.birthDate.month == now.month && b.birthDate.day == now.day && !b.checkedToday;
     }).toList();
 
-    if (todayBirthdays.isEmpty) return;
+    if (todayBirthdays.isEmpty) {
+      if (anyFlagChanged) {
+        final refreshed = await _birthdayRepository.getBirthdays();
+        await _syncAlarmsToNative(refreshed);
+      }
+      return;
+    }
 
     // Ensure todo lists are loaded
     final todoState = _ref.read(todoNotifierProvider);
@@ -52,11 +82,25 @@ class BirthdayNotifier extends StateNotifier<AsyncValue<List<Birthday>>> {
       await _ref.read(todoNotifierProvider.notifier).loadTodoLists();
     }
 
-    final todoLists = _ref.read(todoNotifierProvider).valueOrNull ?? [];
+    var todoLists = _ref.read(todoNotifierProvider).valueOrNull ?? [];
+
+    // Resolve (or create) the 'Today' list once up front. Previously this was
+    // done per-birthday against a snapshot of todoLists that was never
+    // refreshed inside the loop, so when 2+ birthdays fell on the same day,
+    // each one independently found "no Today list yet" and created its own,
+    // leaving duplicate 'Today' lists behind.
+    int? todayListId;
+    var existingToday = todoLists.firstWhere(
+      (l) => l.title.trim().toLowerCase() == 'today',
+      orElse: () => TodoList()..id = -999,
+    );
+    if (existingToday.id != -999) {
+      todayListId = existingToday.id;
+    }
 
     for (var birthday in todayBirthdays) {
       final taskText = 'Wish "${birthday.name}"';
-      
+
       // Check if already exists in any list
       bool exists = false;
       for (var list in todoLists) {
@@ -67,33 +111,34 @@ class BirthdayNotifier extends StateNotifier<AsyncValue<List<Birthday>>> {
       }
 
       if (!exists) {
-        // Find or create 'Today' list
-        var todayList = todoLists.firstWhere(
-          (l) => l.title.trim().toLowerCase() == 'today',
-          orElse: () => TodoList()..id = -999,
-        );
-
-        int listId;
-        if (todayList.id == -999) {
-          await _ref.read(todoNotifierProvider.notifier).addTodoList('Today');
-          await _ref.read(todoNotifierProvider.notifier).loadTodoLists();
-          final freshLists = _ref.read(todoNotifierProvider).valueOrNull ?? [];
-          final createdList = freshLists.firstWhere(
-            (l) => l.title.trim().toLowerCase() == 'today',
-            orElse: () => freshLists.first,
-          );
-          listId = createdList.id;
-        } else {
-          listId = todayList.id;
+        if (todayListId == null) {
+          final createdList = await _ref.read(todoNotifierProvider.notifier).addTodoList('Today');
+          if (createdList == null) {
+            // Creation failed this cycle; skip and retry on next load.
+            continue;
+          }
+          todayListId = createdList.id;
         }
 
-        await _ref.read(todoNotifierProvider.notifier).addTodoItem(listId, taskText);
+        await _ref.read(todoNotifierProvider.notifier).addTodoItem(todayListId, taskText);
+        // Reflect the new item locally so subsequent iterations' "exists" check sees it.
+        todoLists = _ref.read(todoNotifierProvider).valueOrNull ?? todoLists;
       }
+
+      // Mark handled for today so re-running this check (e.g. after the user
+      // deletes the generated todo item) doesn't resurrect it.
+      await _birthdayRepository.checkBirthdayToday(birthday.id, true);
     }
+
+    // Push the updated checkedToday flags to native immediately so the alarm
+    // receiver doesn't fire a redundant notification later today using a
+    // stale cached copy.
+    final refreshed = await _birthdayRepository.getBirthdays();
+    await _syncAlarmsToNative(refreshed);
   }
 
   Future<void> addBirthday(Birthday birthday) async {
-    state = const AsyncValue.loading();
+    // No intermediate loading flash over the existing list for a simple add.
     try {
       await _birthdayRepository.addBirthday(birthday);
       await loadBirthdays();
@@ -103,7 +148,10 @@ class BirthdayNotifier extends StateNotifier<AsyncValue<List<Birthday>>> {
   }
 
   Future<void> deleteBirthday(int id) async {
-    state = const AsyncValue.loading();
+    final current = state.valueOrNull;
+    if (current != null) {
+      state = AsyncValue.data(current.where((b) => b.id != id).toList());
+    }
     try {
       await _birthdayRepository.deleteBirthday(id);
       await loadBirthdays();

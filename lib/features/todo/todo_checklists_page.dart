@@ -95,6 +95,7 @@ class _TodoChecklistsPageState extends ConsumerState<TodoChecklistsPage> {
                     itemBuilder: (context, index) {
                       final list = todoLists[index];
                       return Padding(
+                        key: ValueKey(list.id),
                         padding: const EdgeInsets.only(bottom: 16.0),
                         child: Card(
                           color: const Color(0xFF161616),
@@ -169,7 +170,7 @@ class _TodoChecklistsPageState extends ConsumerState<TodoChecklistsPage> {
                               // Add item input row inside the list expansion
                               Padding(
                                 padding: const EdgeInsets.all(16.0),
-                                child: AddTodoItemInputRow(listId: list.id),
+                                child: AddTodoItemInputRow(key: ValueKey('add-${list.id}'), listId: list.id),
                               ),
                             ],
                           ),

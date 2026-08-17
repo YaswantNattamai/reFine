@@ -18,11 +18,12 @@ class TodoRepository {
   }
 
   // Add a new Todo list (category)
-  Future<void> addTodoList(String title) async {
+  Future<TodoList> addTodoList(String title) async {
+    final list = TodoList()..title = title;
     await isar.writeTxn(() async {
-      final list = TodoList()..title = title;
       await isar.todoLists.put(list);
     });
+    return list;
   }
 
   // Delete a Todo list and all its associated items

@@ -82,8 +82,15 @@ class AppLockAccessibilityService : AccessibilityService() {
                 val usageMinutes = (app["todayUsageMinutes"] as? Number)?.toInt() ?: 0
                 val bypass = (app["bypassUntil"] as? Number)?.toLong() ?: 0L
                 
+                // Dart reports usage rounded down to whole minutes, so "0" from Dart just
+                // means "still under a minute so far today" - NOT necessarily a reset signal.
+                // Trusting it blindly here would wipe out the in-progress native second counter
+                // every time Flutter echoes back a stale/rounded value (e.g. via the watchLazy
+                // listener firing for an unrelated locked-app change). Actual day resets are
+                // handled independently by checkMidnightReset() below, so we only ever grow
+                // the counter here.
                 val prevSeconds = oldUsageSeconds[pkgName] ?: 0
-                val finalSeconds = if (usageMinutes == 0) 0 else maxOf(prevSeconds, usageMinutes * 60)
+                val finalSeconds = maxOf(prevSeconds, usageMinutes * 60)
 
                 lockedAppsMap[pkgName] = LockedAppNative(
                     packageName = pkgName,
@@ -171,36 +178,47 @@ class AppLockAccessibilityService : AccessibilityService() {
 
     private val timerRunnable = object : Runnable {
         override fun run() {
-            // Dynamically recover active package from root window if state was temporarily lost
-            val currentPkg = rootInActiveWindow?.packageName?.toString() ?: activePackageName
-            if (currentPkg != null && currentPkg != activePackageName) {
-                activePackageName = currentPkg
-            }
+            // This ticks every 5 seconds for as long as the service is alive, so any
+            // uncaught exception here (rootInActiveWindow is a known source of rare
+            // IllegalStateExceptions on some OEMs/timing windows) would crash the whole
+            // app - and since this app can be the default home launcher, that crash can
+            // leave the user staring at a blank/broken home screen. Never let a single
+            // bad tick kill the loop; always reschedule.
+            try {
+                // Dynamically recover active package from root window if state was temporarily lost
+                val currentPkg = rootInActiveWindow?.packageName?.toString() ?: activePackageName
+                if (currentPkg != null && currentPkg != activePackageName) {
+                    activePackageName = currentPkg
+                }
 
-            checkMidnightReset()
+                checkMidnightReset()
 
-            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            val isScreenInteractive = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
-                pm.isInteractive
-            } else {
-                @Suppress("DEPRECATION")
-                pm.isScreenOn
-            }
+                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                val isScreenInteractive = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
+                    pm.isInteractive
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.isScreenOn
+                }
 
-            if (isScreenInteractive) {
-                activePackageName?.let { pkg ->
-                    val app = lockedAppsMap[pkg]
-                    if (app != null && !excludedPackages.contains(pkg)) {
-                        val now = System.currentTimeMillis()
-                        if (now > app.bypassUntil) {
-                            app.todayUsageSeconds += 5
-                            // Trigger check
-                            checkActiveLock()
+                if (isScreenInteractive) {
+                    activePackageName?.let { pkg ->
+                        val app = lockedAppsMap[pkg]
+                        if (app != null && !excludedPackages.contains(pkg)) {
+                            val now = System.currentTimeMillis()
+                            if (now > app.bypassUntil) {
+                                app.todayUsageSeconds += 5
+                                // Trigger check
+                                checkActiveLock()
+                            }
                         }
                     }
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                handler.postDelayed(this, 5000)
             }
-            handler.postDelayed(this, 5000)
         }
     }
 
@@ -248,9 +266,12 @@ class AppLockAccessibilityService : AccessibilityService() {
             val usageMinutes = app.todayUsageSeconds / 60
             
             if (usageMinutes >= app.dailyLimitMinutes && now > app.bypassUntil) {
-                // Show blocking overlay if overlay permission is granted
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
                     showOverlay(pkg)
+                } else {
+                    // Overlay permission missing/revoked - can't block in place, so fall back
+                    // to sending the user home instead of silently letting the limit be ignored.
+                    goHome()
                 }
             } else {
                 removeOverlay()
@@ -350,8 +371,18 @@ class AppLockAccessibilityService : AccessibilityService() {
         }
         container.addView(closeButton)
 
-        overlayView = container
-        wm.addView(overlayView, params)
+        // canDrawOverlays() was already checked by the caller, but that's a
+        // check-then-act race: permission can be revoked in between, or some
+        // OEMs throw here regardless. Don't let a failed overlay add crash
+        // the whole (possibly default-launcher) app.
+        try {
+            overlayView = container
+            wm.addView(overlayView, params)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            overlayView = null
+            goHome()
+        }
     }
 
     private fun applyBypass(packageName: String, minutes: Int) {
@@ -370,11 +401,15 @@ class AppLockAccessibilityService : AccessibilityService() {
 
     private fun goHome() {
         removeOverlay()
-        val intent = Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        try {
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
-        startActivity(intent)
     }
 
     private fun removeOverlay() {

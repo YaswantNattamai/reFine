@@ -15,19 +15,42 @@ class SystemSettingsPage extends ConsumerStatefulWidget {
   ConsumerState<SystemSettingsPage> createState() => _SystemSettingsPageState();
 }
 
-class _SystemSettingsPageState extends ConsumerState<SystemSettingsPage> with SingleTickerProviderStateMixin {
+class _SystemSettingsPageState extends ConsumerState<SystemSettingsPage> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   final _appSearchController = TextEditingController();
   String _appSearchQuery = "";
+  // Cached rather than called inline in FutureBuilder - this page's build()
+  // reruns on every setting change (typing in the app search box, toggling
+  // switches, etc.), and creating a fresh Future each time made the "Default
+  // Launcher Status" indicator flash back to "Not Set" on nearly every tap.
+  late Future<bool> _isDefaultLauncherFuture;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _isDefaultLauncherFuture = ref.read(launcherServiceProvider).isDefaultLauncher();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  void _refreshDefaultLauncherStatus() {
+    setState(() {
+      _isDefaultLauncherFuture = ref.read(launcherServiceProvider).isDefaultLauncher();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // openDefaultHomeSettings() just fires the system intent and returns
+    // immediately - the actual choice only lands once the user comes back.
+    if (state == AppLifecycleState.resumed) {
+      _refreshDefaultLauncherStatus();
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     _appSearchController.dispose();
     super.dispose();
@@ -127,6 +150,7 @@ class _SystemSettingsPageState extends ConsumerState<SystemSettingsPage> with Si
                         final limit = isLocked ? lockedApp.dailyLimitMinutes : 0;
 
                         return ListTile(
+                          key: ValueKey(app.packageName),
                           contentPadding: EdgeInsets.zero,
                           title: Text(
                             app.name,
@@ -325,11 +349,12 @@ class _SystemSettingsPageState extends ConsumerState<SystemSettingsPage> with Si
                       trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white54, size: 16),
                       onTap: () async {
                         await launcherService.openDefaultHomeSettings();
+                        _refreshDefaultLauncherStatus();
                       },
                     ),
                     const Divider(color: Colors.white10, height: 1),
                     FutureBuilder<bool>(
-                      future: launcherService.isDefaultLauncher(),
+                      future: _isDefaultLauncherFuture,
                       builder: (context, snapshot) {
                         final isDefault = snapshot.data ?? false;
                         return ListTile(
@@ -413,6 +438,7 @@ class _SystemSettingsPageState extends ConsumerState<SystemSettingsPage> with Si
                     final app = allApps[index];
                     final isFav = currentFavorites.contains(app.packageName);
                     return CheckboxListTile(
+                      key: ValueKey(app.packageName),
                       title: Text(app.name, style: const TextStyle(color: Colors.white)),
                       value: isFav,
                       activeColor: Colors.white,

@@ -21,8 +21,7 @@ class BirthdayAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         // 1. Reschedule for tomorrow
         val hour = intent.getIntExtra("alarm_hour", 9)
-        val reqCode = if (hour == 9) 9999 else 8888
-        NotificationScheduler.scheduleDailyAlarm(context, hour, reqCode)
+        NotificationScheduler.scheduleDailyAlarm(context, hour, 9999)
 
         // 2. Check if today is anyone's birthday
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

@@ -97,8 +97,17 @@ class MainActivity : FlutterActivity() {
                     if (packageName != null) {
                         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
                         if (launchIntent != null) {
-                            startActivity(launchIntent)
-                            result.success(true)
+                            try {
+                                startActivity(launchIntent)
+                                result.success(true)
+                            } catch (e: Exception) {
+                                // The app could have been uninstalled/disabled in the moment
+                                // between listing it and tapping it, or be otherwise
+                                // unstartable (SecurityException, etc). This is the launcher
+                                // itself - an uncaught exception here would crash the home
+                                // screen, so never let a single bad launch take it down.
+                                result.error("LAUNCH_FAILED", "Could not launch app", e.message)
+                            }
                         } else {
                             result.error("UNLAUNCHABLE", "App cannot be launched", null)
                         }
@@ -213,12 +222,19 @@ class MainActivity : FlutterActivity() {
         }
         val resolveInfoList = packageManager.queryIntentActivities(intent, 0)
         for (resolveInfo in resolveInfoList) {
-            val appInfo = HashMap<String, String>()
-            val label = resolveInfo.loadLabel(packageManager).toString()
-            val packName = resolveInfo.activityInfo.packageName
-            appInfo["name"] = label
-            appInfo["packageName"] = packName
-            list.add(appInfo)
+            // loadLabel() can throw for malformed/broken APKs (missing resources etc);
+            // this is a real-world occurrence with some OEM/system packages. Skip that
+            // one entry rather than letting it wipe out the entire app list.
+            try {
+                val appInfo = HashMap<String, String>()
+                val label = resolveInfo.loadLabel(packageManager).toString()
+                val packName = resolveInfo.activityInfo.packageName
+                appInfo["name"] = label
+                appInfo["packageName"] = packName
+                list.add(appInfo)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
         return list
     }

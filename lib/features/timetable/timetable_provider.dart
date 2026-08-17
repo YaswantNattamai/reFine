@@ -38,19 +38,36 @@ class TimetableNotifier extends StateNotifier<AsyncValue<List<Task>>> {
 
   Future<void> addTask(Task task) async {
     try {
+      final isEdit = task.id != Isar.autoIncrement;
       await _taskRepository.addTask(task);
-      await loadTasks();
+      final current = state.valueOrNull;
+      if (current != null) {
+        if (isEdit) {
+          state = AsyncValue.data([
+            for (final t in current) t.id == task.id ? task : t,
+          ]);
+        } else {
+          state = AsyncValue.data([...current, task]);
+        }
+      } else {
+        await loadTasks();
+      }
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      await loadTasks();
     }
   }
 
   Future<void> deleteTask(int taskId) async {
+    final current = state.valueOrNull;
+    if (current != null) {
+      state = AsyncValue.data(current.where((t) => t.id != taskId).toList());
+    }
     try {
       await _taskRepository.deleteTask(taskId);
-      await loadTasks();
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      await loadTasks();
     }
   }
 

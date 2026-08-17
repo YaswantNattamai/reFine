@@ -96,6 +96,7 @@ class _MotivationBankPageState extends ConsumerState<MotivationBankPage> {
                     itemBuilder: (context, index) {
                       final quote = quotes[index];
                       return ListTile(
+                        key: ValueKey(quote.id),
                         contentPadding: EdgeInsets.zero,
                         title: Text(
                           "\"${quote.quote}\"",

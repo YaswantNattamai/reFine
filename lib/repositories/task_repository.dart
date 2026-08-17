@@ -110,7 +110,11 @@ class TaskRepository {
         stats.completedTasksCount = completedTaskIds.length;
       }
 
-      // Check if threshold is met for wallpaper unlock
+      // Check if threshold is met for wallpaper unlock. This is a one-way
+      // unlock for the day (see DailyStats.todayWallpaperUnlocked) - the
+      // WallpaperBackground widget stops polling once it observes unlocked,
+      // so flipping it back to false here would leave the UI showing a
+      // stale "unlocked" state while the DB disagrees. Only ever set true.
       if (activeTasks.isNotEmpty) {
         final settings = await isar.settings.where().findFirst();
         final threshold = settings?.wallpaperUnlockedThreshold ?? 0.8;
@@ -118,9 +122,6 @@ class TaskRepository {
 
         if (percentage >= threshold) {
           stats.todayWallpaperUnlocked = true;
-        } else {
-          // Re-lock if tasks are unchecked and threshold no longer met
-          stats.todayWallpaperUnlocked = false;
         }
       }
 

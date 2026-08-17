@@ -12,20 +12,20 @@ object NotificationScheduler {
     private const val PREFS_NAME = "birthday_prefs"
     private const val KEY_BIRTHDAYS = "birthdays_json"
     private const val ALARM_REQ_CODE_9AM = 9999
-    private const val ALARM_REQ_CODE_12AM = 8888
 
     fun setBirthdayAlarms(context: Context, birthdaysJson: String) {
         // 1. Save to SharedPreferences
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_BIRTHDAYS, birthdaysJson).apply()
 
-        // 2. Schedule Daily Check Alarms
+        // 2. Schedule Daily Check Alarm
         scheduleAllAlarms(context)
     }
 
     fun scheduleAllAlarms(context: Context) {
+        // A single daily check is enough - scheduling more than one alarm per day
+        // caused the same birthday to notify twice.
         scheduleDailyAlarm(context, 9, ALARM_REQ_CODE_9AM)
-        scheduleDailyAlarm(context, 0, ALARM_REQ_CODE_12AM)
     }
 
     fun scheduleDailyAlarm(context: Context, hour: Int, reqCode: Int) {

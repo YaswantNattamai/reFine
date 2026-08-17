@@ -32,23 +32,35 @@ class MotivationNotifier extends StateNotifier<AsyncValue<List<Motivation>>> {
   }
 
   Future<void> addQuote(String quoteText) async {
-    state = const AsyncValue.loading();
+    // No intermediate loading flash - randomQuoteProvider derives the
+    // home-screen quote from this state and falls back to a hardcoded
+    // default while loading, so clearing state here made the displayed
+    // quote visibly jump to the default text on every single add/delete.
+    final quote = Motivation()..quote = quoteText;
     try {
-      final quote = Motivation()..quote = quoteText;
       await _motivationRepository.addQuote(quote);
-      await loadQuotes();
+      final current = state.valueOrNull;
+      if (current != null) {
+        state = AsyncValue.data([...current, quote]);
+      } else {
+        await loadQuotes();
+      }
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      await loadQuotes();
     }
   }
 
   Future<void> deleteQuote(int id) async {
-    state = const AsyncValue.loading();
+    final current = state.valueOrNull;
+    if (current != null) {
+      state = AsyncValue.data(current.where((q) => q.id != id).toList());
+    }
     try {
       await _motivationRepository.deleteQuote(id);
-      await loadQuotes();
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      await loadQuotes();
     }
   }
 }

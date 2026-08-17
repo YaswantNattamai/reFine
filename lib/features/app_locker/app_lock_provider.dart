@@ -102,6 +102,8 @@ class AppLockNotifier extends StateNotifier<List<LockedApp>> {
     }
   }
 
+  Future<void> resyncFromNative() => _performPeriodicSync();
+
   Future<void> _performPeriodicSync() async {
     try {
       final isar = await _isarService.db;

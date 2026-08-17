@@ -103,10 +103,14 @@ class _AppListPageState extends ConsumerState<AppListPage> with WidgetsBindingOb
                                 separatorBuilder: (context, index) => const Divider(
                                   color: Colors.white10,
                                   height: 1,
+                                  thickness: 1,
                                 ),
                                 itemBuilder: (context, index) {
                                   final app = searchState.filteredApps[index];
                                   return ListTile(
+                                    key: ValueKey(app.packageName),
+                                    dense: true,
+                                    visualDensity: VisualDensity.compact,
                                     title: Text(
                                       app.name,
                                       style: const TextStyle(
@@ -115,7 +119,7 @@ class _AppListPageState extends ConsumerState<AppListPage> with WidgetsBindingOb
                                         fontWeight: FontWeight.w300,
                                       ),
                                     ),
-                                    contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                                    contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
                                     onTap: () {
                                       _searchController.clear();
                                       ref.read(searchNotifierProvider.notifier).updateQuery('');

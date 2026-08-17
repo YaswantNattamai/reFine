@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,10 +7,7 @@ import 'features/dashboard/dashboard_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/onboarding/permission_onboarding_page.dart';
 import 'features/onboarding/permission_provider.dart';
-import 'features/app_locker/app_lock_provider.dart';
-import 'package:isar/isar.dart';
-import 'database/collections/daily_stats.dart';
-import 'database/collections/settings.dart';
+import 'features/settings/system_settings_provider.dart';
 
 void main() {
   runApp(const ProviderScope(child: ReFineLauncherApp()));
@@ -55,14 +51,14 @@ class OnboardingGuard extends ConsumerWidget {
   }
 }
 
-class LauncherShell extends StatefulWidget {
+class LauncherShell extends ConsumerStatefulWidget {
   const LauncherShell({super.key});
 
   @override
-  State<LauncherShell> createState() => _LauncherShellState();
+  ConsumerState<LauncherShell> createState() => _LauncherShellState();
 }
 
-class _LauncherShellState extends State<LauncherShell> {
+class _LauncherShellState extends ConsumerState<LauncherShell> with WidgetsBindingObserver {
   // Page 2 (HomePage) is index 1. So we start at index 1.
   late PageController _pageController;
 
@@ -70,12 +66,27 @@ class _LauncherShellState extends State<LauncherShell> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: 1);
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     super.dispose();
+  }
+
+  // Critical permissions (accessibility/overlay/usage-stats) can be revoked
+  // from system settings at any time, not just during onboarding. The
+  // onboarding page only re-checks while it itself is mounted, so once past
+  // it nothing ever noticed a revoke - app-lock enforcement (and this guard)
+  // would silently keep believing permissions were still granted. Re-check
+  // on every resume regardless of which screen is showing.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(permissionNotifierProvider.notifier).checkPermissions();
+    }
   }
 
   @override
@@ -118,65 +129,45 @@ class WallpaperBackground extends ConsumerStatefulWidget {
 }
 
 class _WallpaperBackgroundState extends ConsumerState<WallpaperBackground> {
-  Timer? _pollTimer;
+  // Locally cached last-known-good values. todayStatsProvider re-executes
+  // on every task completion anywhere in the app (it watches
+  // todayCompletionsProvider), and briefly reporting "no value yet" during
+  // that refresh - even for a frame - was making the whole background
+  // flash to black/gradient and back. We only ever overwrite these when a
+  // provider actually has fresh data, so a transient reload never regresses
+  // the displayed wallpaper.
   bool _isUnlocked = false;
   String? _wallpaperPath;
-  String? _settingsPath;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkUnlockStatus(); // Check immediately on startup
-    // Poll every 15 minutes as long as wallpaper isn't unlocked yet
-    _pollTimer = Timer.periodic(const Duration(minutes: 15), (_) {
-      if (!_isUnlocked) {
-        _checkUnlockStatus();
-      } else {
-        _pollTimer?.cancel(); // Stop polling once unlocked
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _pollTimer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _checkUnlockStatus() async {
-    try {
-      final isarService = ref.read(isarServiceProvider);
-      final isar = await isarService.db;
-      final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
-      final stats = await isar.dailyStats.filter().dateEqualTo(today).findFirst();
-      final settings = await isar.settings.where().findFirst();
-
-      final unlocked = stats?.todayWallpaperUnlocked ?? false;
-      final path = settings?.selectedWallpaperPath;
-
-      if (mounted) {
-        setState(() {
-          _isUnlocked = unlocked;
-          _settingsPath = path;
-          _wallpaperPath = (unlocked && path != null && path.isNotEmpty && File(path).existsSync())
-              ? path
-              : null;
-        });
-        if (unlocked) {
-          _pollTimer?.cancel(); // No more polling needed
-        }
-      }
-    } catch (_) {
-      // Keep current state silently on error
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
-    if (_isUnlocked) {
-      if (_wallpaperPath != null) {
+    // Driven directly by the same providers the timetable/settings screens use,
+    // so the wallpaper unlocks/updates immediately when tasks are completed or
+    // the wallpaper is changed - previously this polled Isar directly on a
+    // 15-minute timer and stopped polling entirely once unlocked, so an unlock
+    // (or a wallpaper path change) could take up to 15 minutes to show up, or
+    // never show up at all within the same session.
+    final statsAsync = ref.watch(todayStatsProvider);
+    final settingsAsync = ref.watch(systemSettingsProvider);
+
+    if (statsAsync.hasValue) {
+      _isUnlocked = statsAsync.value?.todayWallpaperUnlocked ?? false;
+    }
+    String? path = _wallpaperPath;
+    if (settingsAsync.hasValue) {
+      path = settingsAsync.value?.selectedWallpaperPath;
+    }
+    _wallpaperPath = path;
+
+    final isUnlocked = _isUnlocked;
+    final wallpaperPath = (isUnlocked && path != null && path.isNotEmpty && File(path).existsSync())
+        ? path
+        : null;
+
+    if (isUnlocked) {
+      if (wallpaperPath != null) {
         return Image.file(
-          File(_wallpaperPath!),
+          File(wallpaperPath),
           fit: BoxFit.cover,
         );
       }

@@ -32,7 +32,8 @@ class JournalNotifier extends StateNotifier<AsyncValue<List<JournalEntry>>> {
   }
 
   Future<void> addEntry(JournalEntry entry) async {
-    state = const AsyncValue.loading();
+    // Don't flash a loading spinner over the whole list for a simple add -
+    // just swap in the fresh data once it's ready.
     try {
       await _journalRepository.addJournalEntry(entry);
       await loadEntries();
@@ -42,12 +43,15 @@ class JournalNotifier extends StateNotifier<AsyncValue<List<JournalEntry>>> {
   }
 
   Future<void> deleteEntry(int id) async {
-    state = const AsyncValue.loading();
+    final current = state.valueOrNull;
+    if (current != null) {
+      state = AsyncValue.data(current.where((e) => e.id != id).toList());
+    }
     try {
       await _journalRepository.deleteJournalEntry(id);
-      await loadEntries();
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
+      await loadEntries();
     }
   }
 }

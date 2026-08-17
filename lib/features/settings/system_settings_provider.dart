@@ -151,7 +151,7 @@ class WeeklyProgressDay {
 
 final currentWeekProgressProvider = FutureProvider<List<WeeklyProgressDay>>((ref) async {
   final isar = await ref.watch(isarServiceProvider).db;
-  final tasksState = ref.watch(timetableNotifierProvider);
+  ref.watch(timetableNotifierProvider); // force re-evaluation when tasks change
   ref.watch(todayCompletionsProvider); // force re-evaluation when completions update
   final taskRepo = TaskRepository(isar);
   
