@@ -116,6 +116,16 @@ class _PermissionOnboardingPageState extends ConsumerState<PermissionOnboardingP
                         ref.read(permissionNotifierProvider.notifier).launcherService.openBatteryOptimizationSettings();
                       },
                     ),
+
+                    // 6. Device Admin (Optional - only needed for double-tap-to-sleep)
+                    _buildPermissionCard(
+                      title: "Device Admin (Optional)",
+                      description: "Only required if you enable Double Tap to Sleep in System Settings, which locks the screen on your behalf.",
+                      isGranted: permissions.deviceAdmin,
+                      onPressed: () {
+                        ref.read(permissionNotifierProvider.notifier).launcherService.requestDeviceAdmin();
+                      },
+                    ),
                   ],
                 ),
               ),

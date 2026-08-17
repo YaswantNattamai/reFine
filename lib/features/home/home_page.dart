@@ -5,6 +5,7 @@ import '../settings/system_settings_provider.dart';
 import '../launcher/launcher_provider.dart';
 import '../launcher/app_info.dart';
 import '../motivation/motivation_provider.dart';
+import '../timetable/current_date_provider.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -16,11 +17,14 @@ class HomePage extends ConsumerStatefulWidget {
 class _HomePageState extends ConsumerState<HomePage> {
 
   Color _getGridBoxColor(double percentage) {
-    if (percentage < 0.0) return Colors.grey.shade800; // Neutral day
+    if (percentage < 0.0) return Colors.grey.shade800; // No tasks scheduled
     if (percentage == 0.0) return Colors.redAccent.shade700; // 0% completed
-    if (percentage < 0.5) return Colors.green.shade900; // Low completion
-    if (percentage < 1.0) return Colors.green.shade700; // Moderate completion
-    return Colors.green; // 100% completed
+    if (percentage < 0.2) return Colors.green.shade900; // Barely started
+    if (percentage < 0.4) return Colors.green.shade800;
+    if (percentage < 0.6) return Colors.green.shade600;
+    if (percentage < 0.8) return Colors.green.shade400;
+    if (percentage < 1.0) return Colors.lightGreen.shade400; // Almost there
+    return Colors.greenAccent.shade400; // 100% completed
   }
 
   @override
@@ -30,11 +34,15 @@ class _HomePageState extends ConsumerState<HomePage> {
     final launcherState = ref.watch(launcherNotifierProvider);
     final quoteText = ref.watch(randomQuoteProvider);
     final weekProgressState = ref.watch(currentWeekProgressProvider);
+    // Same date source currentWeekProgressProvider itself anchors the week on,
+    // so "today" agrees with which day is actually in the grid - a raw
+    // DateTime.now() here could disagree with it for a few seconds around
+    // midnight and wrongly grey out today's box or show 0% Completed Today.
+    final currentDate = ref.watch(currentDateProvider).value ?? DateTime.now();
 
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
-      backgroundColor: Colors.transparent, // Transparent to allow launcher shell wallpaper to show
-      body: SafeArea(
+    final doubleTapToSleepEnabled = settingsState.valueOrNull?.doubleTapToSleepEnabled ?? false;
+
+    Widget body = SafeArea(
         child: SizedBox(
           width: double.infinity,
           child: Padding(
@@ -178,12 +186,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                           if (days != null) {
                             final todayProgress = days.firstWhere(
                               (d) {
-                                final now = DateTime.now();
-                                return d.date.year == now.year &&
-                                       d.date.month == now.month &&
-                                       d.date.day == now.day;
+                                return d.date.year == currentDate.year &&
+                                       d.date.month == currentDate.month &&
+                                       d.date.day == currentDate.day;
                               },
-                              orElse: () => WeeklyProgressDay(date: DateTime.now(), completedCount: 0, totalCount: 0),
+                              orElse: () => WeeklyProgressDay(date: currentDate, completedCount: 0, totalCount: 0),
                             );
                             final percent = todayProgress.totalCount == 0
                                 ? 0
@@ -209,7 +216,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: List.generate(7, (index) {
                             final dayProgress = days[index];
-                            final todayMidnight = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+                            final todayMidnight = DateTime(currentDate.year, currentDate.month, currentDate.day);
                             final isFutureDay = dayProgress.date.isAfter(todayMidnight);
                             final boxColor = isFutureDay 
                                 ? Colors.grey.shade800
@@ -311,8 +318,26 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
         ),
       ),
-    ),
-  );
+    );
+
+    // Only pay the double-tap gesture-arena cost (a short delay added to
+    // every tap while resolving single vs double tap) when the feature is
+    // actually enabled - keeps the default experience fully snappy.
+    if (doubleTapToSleepEnabled) {
+      body = GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onDoubleTap: () {
+          ref.read(launcherServiceProvider).lockScreen();
+        },
+        child: body,
+      );
+    }
+
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      backgroundColor: Colors.transparent, // Transparent to allow launcher shell wallpaper to show
+      body: body,
+    );
   }
 
   void _showFavoritesDialog(BuildContext context, List<String> currentFavorites, List<AppInfo> allApps) {

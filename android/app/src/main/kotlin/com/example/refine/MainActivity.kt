@@ -1,5 +1,7 @@
 package com.example.refine
 
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -18,6 +20,7 @@ import java.util.ArrayList
 import java.util.HashMap
 import java.lang.ref.WeakReference
 import com.example.refine.services.AppLockAccessibilityService
+import com.example.refine.receivers.RefineDeviceAdminReceiver
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL_NAME = "com.example.refine/launcher"
@@ -208,6 +211,38 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                 }
+                "isDeviceAdminActive" -> {
+                    result.success(isDeviceAdminActive())
+                }
+                "requestDeviceAdmin" -> {
+                    try {
+                        val adminComponent = ComponentName(this, RefineDeviceAdminReceiver::class.java)
+                        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                            putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
+                            putExtra(
+                                DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                                "Needed so reFine can lock your screen for the double-tap-to-sleep gesture."
+                            )
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("FAILED", "Could not open device admin request", e.message)
+                    }
+                }
+                "lockScreen" -> {
+                    if (isDeviceAdminActive()) {
+                        try {
+                            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                            dpm.lockNow()
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("LOCK_FAILED", "Could not lock screen", e.message)
+                        }
+                    } else {
+                        result.error("NOT_ADMIN", "Device admin not active", null)
+                    }
+                }
                 else -> {
                     result.notImplemented()
                 }
@@ -237,6 +272,12 @@ class MainActivity : FlutterActivity() {
             }
         }
         return list
+    }
+
+    private fun isDeviceAdminActive(): Boolean {
+        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        val adminComponent = ComponentName(this, RefineDeviceAdminReceiver::class.java)
+        return dpm.isAdminActive(adminComponent)
     }
 
     private fun isNavbarDefaultLauncher(): Boolean {

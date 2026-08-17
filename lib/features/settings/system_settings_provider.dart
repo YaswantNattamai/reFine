@@ -112,6 +112,22 @@ class SystemSettingsNotifier extends StateNotifier<AsyncValue<Settings>> {
       state = AsyncValue.error(e, stack);
     }
   }
+
+  Future<void> updateDoubleTapToSleep(bool enabled) async {
+    try {
+      final isar = await _isarService.db;
+      final settings = state.value;
+      if (settings != null) {
+        settings.doubleTapToSleepEnabled = enabled;
+        await isar.writeTxn(() async {
+          await isar.settings.put(settings);
+        });
+        state = AsyncValue.data(settings);
+      }
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
 }
 
 final systemSettingsProvider = StateNotifierProvider<SystemSettingsNotifier, AsyncValue<Settings>>((ref) {

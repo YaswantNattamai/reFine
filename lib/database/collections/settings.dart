@@ -11,4 +11,5 @@ class Settings {
   String? selectedWallpaperPath;
   bool defaultLauncher = false;
   List<String> favoriteApps = [];
+  bool doubleTapToSleepEnabled = false;
 }

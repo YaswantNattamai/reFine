@@ -8,6 +8,7 @@ class PermissionStates {
   final bool accessibilityService;
   final bool usageStats;
   final bool batteryOptimization;
+  final bool deviceAdmin;
 
   PermissionStates({
     required this.defaultLauncher,
@@ -15,6 +16,7 @@ class PermissionStates {
     required this.accessibilityService,
     required this.usageStats,
     required this.batteryOptimization,
+    required this.deviceAdmin,
   });
 
   bool get allCriticalGranted =>
@@ -33,6 +35,7 @@ class PermissionNotifier extends StateNotifier<PermissionStates> {
           accessibilityService: false,
           usageStats: false,
           batteryOptimization: false,
+          deviceAdmin: false,
         )) {
     checkPermissions();
   }
@@ -43,6 +46,7 @@ class PermissionNotifier extends StateNotifier<PermissionStates> {
     final accessibility = await launcherService.isAccessibilityServiceEnabled();
     final usage = await launcherService.isUsageStatsGranted();
     final battery = await launcherService.isBatteryOptimizationIgnored();
+    final deviceAdmin = await launcherService.isDeviceAdminActive();
 
     state = PermissionStates(
       defaultLauncher: defaultLauncher,
@@ -50,6 +54,7 @@ class PermissionNotifier extends StateNotifier<PermissionStates> {
       accessibilityService: accessibility,
       usageStats: usage,
       batteryOptimization: battery,
+      deviceAdmin: deviceAdmin,
     );
   }
 }

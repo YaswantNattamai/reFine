@@ -22,23 +22,28 @@ const SettingsSchema = CollectionSchema(
       name: r'defaultLauncher',
       type: IsarType.bool,
     ),
-    r'favoriteApps': PropertySchema(
+    r'doubleTapToSleepEnabled': PropertySchema(
       id: 1,
+      name: r'doubleTapToSleepEnabled',
+      type: IsarType.bool,
+    ),
+    r'favoriteApps': PropertySchema(
+      id: 2,
       name: r'favoriteApps',
       type: IsarType.stringList,
     ),
     r'quoteEnabled': PropertySchema(
-      id: 2,
+      id: 3,
       name: r'quoteEnabled',
       type: IsarType.bool,
     ),
     r'selectedWallpaperPath': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'selectedWallpaperPath',
       type: IsarType.string,
     ),
     r'wallpaperUnlockedThreshold': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'wallpaperUnlockedThreshold',
       type: IsarType.double,
     )
@@ -86,10 +91,11 @@ void _settingsSerialize(
   Map<Type, List<int>> allOffsets,
 ) {
   writer.writeBool(offsets[0], object.defaultLauncher);
-  writer.writeStringList(offsets[1], object.favoriteApps);
-  writer.writeBool(offsets[2], object.quoteEnabled);
-  writer.writeString(offsets[3], object.selectedWallpaperPath);
-  writer.writeDouble(offsets[4], object.wallpaperUnlockedThreshold);
+  writer.writeBool(offsets[1], object.doubleTapToSleepEnabled);
+  writer.writeStringList(offsets[2], object.favoriteApps);
+  writer.writeBool(offsets[3], object.quoteEnabled);
+  writer.writeString(offsets[4], object.selectedWallpaperPath);
+  writer.writeDouble(offsets[5], object.wallpaperUnlockedThreshold);
 }
 
 Settings _settingsDeserialize(
@@ -100,11 +106,12 @@ Settings _settingsDeserialize(
 ) {
   final object = Settings();
   object.defaultLauncher = reader.readBool(offsets[0]);
-  object.favoriteApps = reader.readStringList(offsets[1]) ?? [];
+  object.doubleTapToSleepEnabled = reader.readBool(offsets[1]);
+  object.favoriteApps = reader.readStringList(offsets[2]) ?? [];
   object.id = id;
-  object.quoteEnabled = reader.readBool(offsets[2]);
-  object.selectedWallpaperPath = reader.readStringOrNull(offsets[3]);
-  object.wallpaperUnlockedThreshold = reader.readDouble(offsets[4]);
+  object.quoteEnabled = reader.readBool(offsets[3]);
+  object.selectedWallpaperPath = reader.readStringOrNull(offsets[4]);
+  object.wallpaperUnlockedThreshold = reader.readDouble(offsets[5]);
   return object;
 }
 
@@ -118,12 +125,14 @@ P _settingsDeserializeProp<P>(
     case 0:
       return (reader.readBool(offset)) as P;
     case 1:
-      return (reader.readStringList(offset) ?? []) as P;
-    case 2:
       return (reader.readBool(offset)) as P;
+    case 2:
+      return (reader.readStringList(offset) ?? []) as P;
     case 3:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readBool(offset)) as P;
     case 4:
+      return (reader.readStringOrNull(offset)) as P;
+    case 5:
       return (reader.readDouble(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -224,6 +233,16 @@ extension SettingsQueryFilter
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.equalTo(
         property: r'defaultLauncher',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Settings, Settings, QAfterFilterCondition>
+      doubleTapToSleepEnabledEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'doubleTapToSleepEnabled',
         value: value,
       ));
     });
@@ -757,6 +776,20 @@ extension SettingsQuerySortBy on QueryBuilder<Settings, Settings, QSortBy> {
     });
   }
 
+  QueryBuilder<Settings, Settings, QAfterSortBy>
+      sortByDoubleTapToSleepEnabled() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'doubleTapToSleepEnabled', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Settings, Settings, QAfterSortBy>
+      sortByDoubleTapToSleepEnabledDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'doubleTapToSleepEnabled', Sort.desc);
+    });
+  }
+
   QueryBuilder<Settings, Settings, QAfterSortBy> sortByQuoteEnabled() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'quoteEnabled', Sort.asc);
@@ -808,6 +841,20 @@ extension SettingsQuerySortThenBy
   QueryBuilder<Settings, Settings, QAfterSortBy> thenByDefaultLauncherDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'defaultLauncher', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Settings, Settings, QAfterSortBy>
+      thenByDoubleTapToSleepEnabled() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'doubleTapToSleepEnabled', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Settings, Settings, QAfterSortBy>
+      thenByDoubleTapToSleepEnabledDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'doubleTapToSleepEnabled', Sort.desc);
     });
   }
 
@@ -871,6 +918,13 @@ extension SettingsQueryWhereDistinct
     });
   }
 
+  QueryBuilder<Settings, Settings, QDistinct>
+      distinctByDoubleTapToSleepEnabled() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'doubleTapToSleepEnabled');
+    });
+  }
+
   QueryBuilder<Settings, Settings, QDistinct> distinctByFavoriteApps() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'favoriteApps');
@@ -910,6 +964,13 @@ extension SettingsQueryProperty
   QueryBuilder<Settings, bool, QQueryOperations> defaultLauncherProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'defaultLauncher');
+    });
+  }
+
+  QueryBuilder<Settings, bool, QQueryOperations>
+      doubleTapToSleepEnabledProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'doubleTapToSleepEnabled');
     });
   }
 

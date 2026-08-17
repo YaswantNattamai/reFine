@@ -174,4 +174,35 @@ class LauncherService {
       return [];
     }
   }
+
+  // Device Admin (required to lock the screen for double-tap-to-sleep)
+  Future<bool> isDeviceAdminActive() async {
+    try {
+      final bool? active = await _channel.invokeMethod<bool>('isDeviceAdminActive');
+      return active ?? false;
+    } on PlatformException catch (e) {
+      print("Error checking device admin: $e");
+      return false;
+    }
+  }
+
+  Future<bool> requestDeviceAdmin() async {
+    try {
+      final bool? success = await _channel.invokeMethod<bool>('requestDeviceAdmin');
+      return success ?? false;
+    } on PlatformException catch (e) {
+      print("Error requesting device admin: $e");
+      return false;
+    }
+  }
+
+  Future<bool> lockScreen() async {
+    try {
+      final bool? success = await _channel.invokeMethod<bool>('lockScreen');
+      return success ?? false;
+    } on PlatformException catch (e) {
+      print("Error locking screen: $e");
+      return false;
+    }
+  }
 }

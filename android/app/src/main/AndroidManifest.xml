@@ -79,6 +79,19 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- Device Admin Receiver: only used to lock the screen for double-tap-to-sleep -->
+        <receiver
+            android:name=".receivers.RefineDeviceAdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_receiver" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

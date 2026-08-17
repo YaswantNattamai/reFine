@@ -369,6 +369,46 @@ class _SystemSettingsPageState extends ConsumerState<SystemSettingsPage> with Si
               ),
               const SizedBox(height: 24),
 
+              // 2b. Gestures
+              const Text(
+                "GESTURES",
+                style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                color: const Color(0xFF161616),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: const BorderSide(color: Colors.white10),
+                ),
+                child: SwitchListTile(
+                  title: const Text("Double Tap to Sleep", style: TextStyle(color: Colors.white)),
+                  subtitle: const Text(
+                    "Double tap an empty area of the Home screen to lock your phone. Requires Device Admin permission.",
+                    style: TextStyle(color: Colors.white38, fontSize: 12),
+                  ),
+                  value: settings.doubleTapToSleepEnabled,
+                  activeColor: Colors.white,
+                  onChanged: (val) async {
+                    if (val) {
+                      final service = ref.read(launcherServiceProvider);
+                      final isAdmin = await service.isDeviceAdminActive();
+                      if (!isAdmin) {
+                        await service.requestDeviceAdmin();
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Grant Device Admin in the dialog, then turn this on again.")),
+                          );
+                        }
+                        return;
+                      }
+                    }
+                    ref.read(systemSettingsProvider.notifier).updateDoubleTapToSleep(val);
+                  },
+                ),
+              ),
+              const SizedBox(height: 24),
+
               // 3. Quotes configuration
               const Text(
                 "CONTENT FEED",
