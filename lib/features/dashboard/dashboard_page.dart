@@ -18,6 +18,30 @@ class DashboardPage extends ConsumerStatefulWidget {
 class _DashboardPageState extends ConsumerState<DashboardPage> {
   bool _workoutExpanded = false;
   bool _timetableExpanded = false;
+  // Optimistic local overrides so the checkbox and its color transition play
+  // instantly on tap instead of waiting on the DB write + FutureProvider
+  // round-trip. Cleared once that round-trip lands (success or failure), at
+  // which point the real data already agrees with what was shown.
+  final Map<int, bool> _pendingCompletionOverrides = {};
+
+  bool _isTaskDoneEffective(int taskId, List<TaskCompletion> completions) {
+    return _pendingCompletionOverrides[taskId] ??
+        completions.any((c) => c.taskId == taskId && c.completed);
+  }
+
+  void _toggleTaskCompletion(int taskId, bool completed) {
+    setState(() {
+      _pendingCompletionOverrides[taskId] = completed;
+    });
+    final date = ref.read(currentDateProvider).value ?? DateTime.now();
+    ref.read(timetableNotifierProvider.notifier).toggleTaskCompletion(taskId, date, completed).whenComplete(() {
+      if (mounted) {
+        setState(() {
+          _pendingCompletionOverrides.remove(taskId);
+        });
+      }
+    });
+  }
 
   int _timeToMinutes(String timeStr) {
     final parts = timeStr.split(':');
@@ -45,7 +69,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
     // Helper to check if a task is completed today
     bool isTaskDone(Task task) {
-      return completions.any((c) => c.taskId == task.id && c.completed);
+      return _isTaskDoneEffective(task.id, completions);
     }
 
     // Sort order:
@@ -371,6 +395,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: ExpansionTile(
+                              // Material 3's ExpansionTile draws a visible top/bottom
+                              // border by default - remove it, the Container already
+                              // has its own background/border.
+                              shape: const Border(),
+                              collapsedShape: const Border(),
                               iconColor: isWorkoutDone ? Colors.black : Colors.white,
                               collapsedIconColor: isWorkoutDone ? Colors.black : Colors.white,
                               title: Text(
@@ -477,7 +506,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
       itemCount: sortedTasks.length,
       itemBuilder: (context, index) {
         final task = sortedTasks[index];
-        final isDone = completions.any((c) => c.taskId == task.id && c.completed);
+        final isDone = _isTaskDoneEffective(task.id, completions);
         final isActive = _isTaskActive(task, DateTime.now());
 
         Color tileColor;
@@ -510,7 +539,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           key: ValueKey(task.id),
           padding: EdgeInsets.only(bottom: isExpanded ? 12.0 : 8.0),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
               color: tileColor,
               borderRadius: BorderRadius.circular(8),
@@ -539,10 +569,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                 side: BorderSide(color: textColor.withOpacity(0.6), width: 2),
                 value: isDone,
                 onChanged: (val) {
-                  final date = ref.read(currentDateProvider).value ?? DateTime.now();
-                  ref
-                      .read(timetableNotifierProvider.notifier)
-                      .toggleTaskCompletion(task.id, date, val ?? false);
+                  _toggleTaskCompletion(task.id, val ?? false);
                 },
               ),
             ),

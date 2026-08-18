@@ -1,8 +1,11 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'system_settings_provider.dart';
+import 'backup_provider.dart';
+import 'wallpaper_crop_page.dart';
 import '../launcher/launcher_provider.dart';
 import '../launcher/app_info.dart';
 import '../app_locker/app_lock_provider.dart';
@@ -299,18 +302,20 @@ class _SystemSettingsPageState extends ConsumerState<SystemSettingsPage> with Si
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                               padding: const EdgeInsets.symmetric(vertical: 10),
                             ),
-                            onPressed: () async {
-                              final result = await FilePicker.platform.pickFiles(
-                                type: FileType.image,
-                                allowMultiple: false,
-                              );
-                              if (result != null && result.files.single.path != null) {
-                                ref.read(systemSettingsProvider.notifier)
-                                    .updateWallpaperPath(result.files.single.path);
-                              }
-                            },
+                            onPressed: () => _pickAndCropWallpaper(context),
                           ),
                         ),
+                        if (settings.selectedWallpaperPath != null &&
+                            settings.selectedWallpaperPath!.isNotEmpty &&
+                            File(settings.selectedWallpaperPath!).existsSync()) ...
+                          [
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.crop, color: Colors.white54),
+                              tooltip: "Adjust crop",
+                              onPressed: () => _adjustWallpaperCrop(context, settings.selectedWallpaperPath!),
+                            ),
+                          ],
                         if (settings.selectedWallpaperPath != null) ...
                           [
                             const SizedBox(width: 8),
@@ -452,11 +457,144 @@ class _SystemSettingsPageState extends ConsumerState<SystemSettingsPage> with Si
                   onTap: () => _showFavoritesDialog(context, settings.favoriteApps, launcherState.apps),
                 ),
               ),
+              const SizedBox(height: 24),
+
+              // 5. Backup & Restore
+              const Text(
+                "BACKUP & RESTORE",
+                style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                color: const Color(0xFF161616),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: const BorderSide(color: Colors.white10),
+                ),
+                child: Column(
+                  children: [
+                    ListTile(
+                      title: const Text("Export Backup", style: TextStyle(color: Colors.white)),
+                      subtitle: const Text(
+                        "Save every todo, task, workout, birthday, journal entry, quote, and setting to a file - use this before uninstalling or switching phones.",
+                        style: TextStyle(color: Colors.white38, fontSize: 12),
+                      ),
+                      trailing: const Icon(Icons.download_outlined, color: Colors.white54),
+                      onTap: () => _exportBackup(context),
+                    ),
+                    const Divider(color: Colors.white10, height: 1),
+                    ListTile(
+                      title: const Text("Import Backup", style: TextStyle(color: Colors.white)),
+                      subtitle: const Text(
+                        "Restore from a previously exported file. This replaces everything currently in the app.",
+                        style: TextStyle(color: Colors.white38, fontSize: 12),
+                      ),
+                      trailing: const Icon(Icons.upload_outlined, color: Colors.redAccent),
+                      onTap: () => _importBackup(context),
+                    ),
+                  ],
+                ),
+              ),
             ],
           );
         },
       ),
     );
+  }
+
+  Future<void> _pickAndCropWallpaper(BuildContext context) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+      withData: true,
+    );
+    if (result == null) return;
+
+    Uint8List? bytes = result.files.single.bytes;
+    if (bytes == null && result.files.single.path != null) {
+      bytes = await File(result.files.single.path!).readAsBytes();
+    }
+    if (bytes == null || !context.mounted) return;
+
+    await _openCropAndSave(context, bytes);
+  }
+
+  Future<void> _adjustWallpaperCrop(BuildContext context, String currentPath) async {
+    final bytes = await File(currentPath).readAsBytes();
+    if (!context.mounted) return;
+    await _openCropAndSave(context, bytes);
+  }
+
+  Future<void> _openCropAndSave(BuildContext context, Uint8List bytes) async {
+    final croppedPath = await Navigator.push<String?>(
+      context,
+      MaterialPageRoute(builder: (context) => WallpaperCropPage(imageBytes: bytes)),
+    );
+    if (croppedPath != null) {
+      ref.read(systemSettingsProvider.notifier).updateWallpaperPath(croppedPath);
+    }
+  }
+
+  Future<void> _exportBackup(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text("Preparing backup...")));
+    try {
+      final path = await ref.read(backupServiceProvider).exportBackup();
+      if (!context.mounted) return;
+      if (path == null) {
+        messenger.showSnackBar(const SnackBar(content: Text("Export cancelled.")));
+      } else {
+        messenger.showSnackBar(SnackBar(content: Text("Backup saved to $path")));
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text("Export failed: $e")));
+    }
+  }
+
+  Future<void> _importBackup(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF161616),
+        title: const Text("Restore Backup?", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: const Text(
+          "This will replace everything currently in reFine (todos, tasks, workouts, birthdays, journal, quotes, settings) with the contents of the backup file. This cannot be undone.",
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("CANCEL", style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("RESTORE", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text("Restoring backup...")));
+    try {
+      final restored = await ref.read(backupServiceProvider).importBackup();
+      if (!context.mounted) return;
+      if (!restored) {
+        messenger.showSnackBar(const SnackBar(content: Text("Import cancelled.")));
+        return;
+      }
+      // Refresh every provider that holds cached data from Isar, since the
+      // whole database was just replaced out from under them.
+      ref.invalidate(systemSettingsProvider);
+      ref.read(appLockNotifierProvider.notifier).resyncFromNative();
+      messenger.showSnackBar(const SnackBar(content: Text("Backup restored. Restart reFine to fully refresh all screens.")));
+    } catch (e) {
+      if (!context.mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text("Import failed - backup was not applied: $e")));
+    }
   }
 
   void _showFavoritesDialog(BuildContext context, List<String> currentFavorites, List<AppInfo> allApps) {

@@ -104,6 +104,11 @@ class _TodoChecklistsPageState extends ConsumerState<TodoChecklistsPage> {
                             side: const BorderSide(color: Colors.white10),
                           ),
                           child: ExpansionTile(
+                            // Material 3's ExpansionTile draws a visible top/bottom
+                            // border by default - remove it, the Card already has
+                            // its own border.
+                            shape: const Border(),
+                            collapsedShape: const Border(),
                             iconColor: Colors.white,
                             collapsedIconColor: Colors.white54,
                             title: Text(
@@ -140,7 +145,6 @@ class _TodoChecklistsPageState extends ConsumerState<TodoChecklistsPage> {
                                         style: TextStyle(
                                           color: isDone ? Colors.black : Colors.white70,
                                           fontWeight: isDone ? FontWeight.bold : FontWeight.normal,
-                                          decoration: isDone ? TextDecoration.lineThrough : null,
                                         ),
                                       ),
                                       trailing: Row(
