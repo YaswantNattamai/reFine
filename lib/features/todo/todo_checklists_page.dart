@@ -2,6 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'todo_provider.dart';
 
+final RegExp _naturalSortChunk = RegExp(r'\d+|\D+');
+
+// Alphabetical sort that treats embedded digit runs as numbers, so "List 2"
+// sorts before "List 10" instead of after (plain string comparison would put
+// "10" before "2" since '1' < '2').
+int _naturalCompare(String a, String b) {
+  final chunksA = _naturalSortChunk.allMatches(a).map((m) => m.group(0)!).toList();
+  final chunksB = _naturalSortChunk.allMatches(b).map((m) => m.group(0)!).toList();
+
+  for (int i = 0; i < chunksA.length && i < chunksB.length; i++) {
+    final chunkA = chunksA[i];
+    final chunkB = chunksB[i];
+    final numA = int.tryParse(chunkA);
+    final numB = int.tryParse(chunkB);
+
+    int cmp;
+    if (numA != null && numB != null) {
+      cmp = numA.compareTo(numB);
+    } else {
+      cmp = chunkA.toLowerCase().compareTo(chunkB.toLowerCase());
+    }
+    if (cmp != 0) return cmp;
+  }
+  return chunksA.length.compareTo(chunksB.length);
+}
 
 class TodoChecklistsPage extends ConsumerStatefulWidget {
   const TodoChecklistsPage({super.key});
@@ -89,11 +114,14 @@ class _TodoChecklistsPageState extends ConsumerState<TodoChecklistsPage> {
                     );
                   }
 
+                  final sortedLists = todoLists.toList()
+                    ..sort((a, b) => _naturalCompare(a.title, b.title));
+
                   return ListView.builder(
                     physics: const BouncingScrollPhysics(),
-                    itemCount: todoLists.length,
+                    itemCount: sortedLists.length,
                     itemBuilder: (context, index) {
-                      final list = todoLists[index];
+                      final list = sortedLists[index];
                       return Padding(
                         key: ValueKey(list.id),
                         padding: const EdgeInsets.only(bottom: 16.0),
@@ -125,7 +153,7 @@ class _TodoChecklistsPageState extends ConsumerState<TodoChecklistsPage> {
                               const Divider(color: Colors.white10),
                               
                               // List Items
-                              ...(list.items.toList()..sort((a, b) => a.id.compareTo(b.id))).map((item) {
+                              ...(list.items.toList()..sort((a, b) => _naturalCompare(a.text, b.text))).map((item) {
                                 final isDone = item.isCompleted;
                                 return Padding(
                                   key: ValueKey(item.id),

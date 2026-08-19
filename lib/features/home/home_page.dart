@@ -59,7 +59,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 child: Container(
                   width: MediaQuery.of(context).size.width * 0.8,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E1E1E).withOpacity(0.8), // Semi-transparent glassmorphism look
+                    color: const Color(0xFF000000).withOpacity(0.8), // Semi-transparent glassmorphism look
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: Colors.white10),
                   ),
@@ -163,7 +163,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 width: MediaQuery.of(context).size.width * 0.8,
                 padding: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF161616).withOpacity(0.8),
+                  color: const Color(0xFF000000).withOpacity(0.8),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.white10),
                 ),

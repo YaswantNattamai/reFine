@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:isar/isar.dart';
 import '../../database/isar_service.dart';
 import '../../database/collections/locked_app.dart';
-import '../../database/collections/journal_entry.dart';
 import '../launcher/launcher_service.dart';
 import '../launcher/launcher_provider.dart';
 
@@ -187,25 +186,11 @@ class AppLockNotifier extends StateNotifier<List<LockedApp>> {
     });
   }
 
-  // Handle emergency bypass logging from native overlay click
+  // Handle emergency bypass from native overlay click
   Future<void> handleEmergencyBypass(String packageName, int minutes) async {
     final isar = await _isarService.db;
-    
-    // Try to extract a clean app name from package (e.g. com.google.android.youtube -> youtube)
-    String cleanName = packageName.split('.').last;
-    if (cleanName.length > 1) {
-      cleanName = cleanName[0].toUpperCase() + cleanName.substring(1);
-    }
-
-    final entry = JournalEntry()
-      ..title = "Emergency Bypass: $cleanName"
-      ..content = "USED $cleanName FOR EXTRA $minutes minutes."
-      ..date = DateTime.now()
-      ..createdAt = DateTime.now();
 
     await isar.writeTxn(() async {
-      await isar.journalEntrys.put(entry);
-      
       // Update bypass timestamp in Isar
       final app = await isar.lockedApps.filter().packageNameEqualTo(packageName).findFirst();
       if (app != null) {

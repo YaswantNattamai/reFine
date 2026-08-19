@@ -24,14 +24,40 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   // which point the real data already agrees with what was shown.
   final Map<int, bool> _pendingCompletionOverrides = {};
 
+  // Tasks that were just checked off are kept in their current spot in the
+  // sort order for a beat, so the checkbox turns green in place before the
+  // tile glides down to join the completed group - rather than jumping there
+  // instantly. Unchecking a task always sorts it back immediately.
+  final Set<int> _sortHoldIds = {};
+  final Map<int, int> _sortHoldGeneration = {};
+  static const _sortHoldDuration = Duration(seconds: 1);
+
   bool _isTaskDoneEffective(int taskId, List<TaskCompletion> completions) {
     return _pendingCompletionOverrides[taskId] ??
         completions.any((c) => c.taskId == taskId && c.completed);
   }
 
+  bool _isTaskDoneForSort(int taskId, List<TaskCompletion> completions) {
+    if (_sortHoldIds.contains(taskId)) return false;
+    return _isTaskDoneEffective(taskId, completions);
+  }
+
   void _toggleTaskCompletion(int taskId, bool completed) {
     setState(() {
       _pendingCompletionOverrides[taskId] = completed;
+      if (completed) {
+        _sortHoldIds.add(taskId);
+        final generation = (_sortHoldGeneration[taskId] ?? 0) + 1;
+        _sortHoldGeneration[taskId] = generation;
+        Future.delayed(_sortHoldDuration, () {
+          if (mounted && _sortHoldGeneration[taskId] == generation) {
+            setState(() => _sortHoldIds.remove(taskId));
+          }
+        });
+      } else {
+        _sortHoldGeneration[taskId] = (_sortHoldGeneration[taskId] ?? 0) + 1;
+        _sortHoldIds.remove(taskId);
+      }
     });
     final date = ref.read(currentDateProvider).value ?? DateTime.now();
     ref.read(timetableNotifierProvider.notifier).toggleTaskCompletion(taskId, date, completed).whenComplete(() {
@@ -67,26 +93,28 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   List<Task> _sortTasksWithActiveOnTop(List<Task> tasks, List<TaskCompletion> completions) {
     final now = DateTime.now();
 
-    // Helper to check if a task is completed today
+    // Helper to check if a task is completed today, for sort purposes -
+    // holds a just-checked task in its old spot for a beat (see
+    // _sortHoldIds) so it doesn't jump to the bottom instantly.
     bool isTaskDone(Task task) {
-      return _isTaskDoneEffective(task.id, completions);
+      return _isTaskDoneForSort(task.id, completions);
     }
 
+    int byStartTime(Task a, Task b) => _timeToMinutes(a.startTime).compareTo(_timeToMinutes(b.startTime));
+
     // Sort order:
-    // 1. Active & Uncompleted (White tile)
-    // 2. Active & Completed (Green tile)
-    // 3. Inactive & Uncompleted (Dark blue/grey tile)
-    // 4. Inactive & Completed (Green tile)
-    final activeUncompleted = tasks.where((t) => _isTaskActive(t, now) && !isTaskDone(t)).toList();
-    final activeCompleted = tasks.where((t) => _isTaskActive(t, now) && isTaskDone(t)).toList();
-    final inactiveUncompleted = tasks.where((t) => !_isTaskActive(t, now) && !isTaskDone(t)).toList();
-    final inactiveCompleted = tasks.where((t) => !_isTaskActive(t, now) && isTaskDone(t)).toList();
+    // 1. Active & Uncompleted, chronological (White tile - "happening now")
+    // 2. Everything else uncompleted, chronological (Dark blue/grey tile)
+    // 3. Everything completed, chronological, in its own group at the bottom
+    //    (Green tile) - regardless of whether it's still "active" right now.
+    final activeUncompleted = tasks.where((t) => _isTaskActive(t, now) && !isTaskDone(t)).toList()..sort(byStartTime);
+    final inactiveUncompleted = tasks.where((t) => !_isTaskActive(t, now) && !isTaskDone(t)).toList()..sort(byStartTime);
+    final completed = tasks.where(isTaskDone).toList()..sort(byStartTime);
 
     return [
       ...activeUncompleted,
-      ...activeCompleted,
       ...inactiveUncompleted,
-      ...inactiveCompleted,
+      ...completed,
     ];
   }
 
@@ -167,7 +195,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           ),
           const Spacer(),
 
-          // 1. Timetable Widget (Dark Blue Background, 220h, expandable)
+          // 1. Timetable Widget (Dark Blue Background, expandable) - given
+          // the larger share of vertical space since it's the widget with
+          // actual scrollable content, unlike the workout summary below.
           GestureDetector(
             onTap: () {
               setState(() {
@@ -176,10 +206,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             },
             child: Container(
               width: MediaQuery.of(context).size.width * 0.8,
-              height: 220,
+              height: 320,
               decoration: BoxDecoration(
-                color: const Color(0xFF0F1B29), // Dark blue background
+                color: const Color(0xFF000000),
                 borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white12),
               ),
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -214,7 +245,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           ),
           const Spacer(),
 
-          // 2. Workout Planner Widget (80% width, expandable on tap)
+          // 2. Workout Planner Widget (80% width, expandable on tap) - kept
+          // compact since it only ever shows a one-line summary here, not a
+          // scrollable list like the timetable widget above.
           GestureDetector(
             onTap: () {
               setState(() {
@@ -223,9 +256,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             },
             child: Container(
               width: MediaQuery.of(context).size.width * 0.8,
-              height: 220,
+              height: 110,
               decoration: BoxDecoration(
-                color: const Color(0xFF161616),
+                color: const Color(0xFF000000),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: Colors.white12),
               ),
@@ -252,7 +285,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
                   Expanded(
                     child: Center(
                       child: Container(
@@ -500,82 +533,138 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     }
 
     final sortedTasks = _sortTasksWithActiveOnTop(tasks, completions);
+    final spacing = isExpanded ? 12.0 : 8.0;
 
-    return ListView.builder(
-      physics: const BouncingScrollPhysics(),
-      itemCount: sortedTasks.length,
-      itemBuilder: (context, index) {
-        final task = sortedTasks[index];
-        final isDone = _isTaskDoneEffective(task.id, completions);
-        final isActive = _isTaskActive(task, DateTime.now());
-
-        Color tileColor;
-        Color textColor;
-        Color subtitleColor;
-        Color checkColor;
-        Color activeColor;
-
-        if (isDone) {
-          tileColor = Colors.green;
-          textColor = Colors.black;
-          subtitleColor = Colors.black;
-          checkColor = Colors.green;
-          activeColor = Colors.black;
-        } else if (isActive) {
-          tileColor = Colors.white;
-          textColor = Colors.black;
-          subtitleColor = Colors.black;
-          checkColor = Colors.black;
-          activeColor = Colors.white;
-        } else {
-          tileColor = const Color(0xFF1E2D3D);
-          textColor = Colors.white;
-          subtitleColor = Colors.white;
-          checkColor = Colors.white;
-          activeColor = const Color(0xFF1E2D3D);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final heights = [
+          for (final task in sortedTasks) _computeTileHeight(task.title, constraints.maxWidth, isExpanded),
+        ];
+        final tops = <double>[];
+        double running = 0;
+        for (final h in heights) {
+          tops.add(running);
+          running += h + spacing;
         }
+        final totalHeight = heights.isEmpty ? 0.0 : running - spacing;
 
-        return Padding(
-          key: ValueKey(task.id),
-          padding: EdgeInsets.only(bottom: isExpanded ? 12.0 : 8.0),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 400),
-            curve: Curves.easeOutCubic,
-            decoration: BoxDecoration(
-              color: tileColor,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: ListTile(
-              contentPadding: isExpanded
-                  ? const EdgeInsets.symmetric(vertical: 4, horizontal: 16)
-                  : null,
-              title: Text(
-                task.title,
-                style: TextStyle(
-                  color: textColor,
-                  fontWeight: (isDone || isActive) ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-              subtitle: Text(
-                "${task.startTime} - ${task.endTime}",
-                style: TextStyle(
-                  color: subtitleColor,
-                  fontSize: 12,
-                ),
-              ),
-              trailing: Checkbox(
-                activeColor: activeColor,
-                checkColor: checkColor,
-                side: BorderSide(color: textColor.withOpacity(0.6), width: 2),
-                value: isDone,
-                onChanged: (val) {
-                  _toggleTaskCompletion(task.id, val ?? false);
-                },
-              ),
+        return SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: SizedBox(
+            height: totalHeight,
+            child: Stack(
+              children: [
+                for (int index = 0; index < sortedTasks.length; index++)
+                  AnimatedPositioned(
+                    key: ValueKey(sortedTasks[index].id),
+                    duration: const Duration(milliseconds: 700),
+                    curve: Curves.easeInOutCubic,
+                    top: tops[index],
+                    left: 0,
+                    right: 0,
+                    height: heights[index],
+                    child: _buildTimetableTile(sortedTasks[index], completions, isExpanded),
+                  ),
+              ],
             ),
           ),
         );
       },
+    );
+  }
+
+  // Tiles need to grow when a long task title wraps to multiple lines,
+  // otherwise the time-range subtitle gets pushed out and clipped past the
+  // tile's fixed bottom edge. Measures how much taller the title becomes
+  // once wrapped at the tile's actual width, and adds that on top of the
+  // single-line base height.
+  double _computeTileHeight(String title, double tileWidth, bool isExpanded) {
+    const titleStyle = TextStyle(fontSize: 16, fontWeight: FontWeight.bold);
+    // Space the title text doesn't get: tile's own horizontal padding, the
+    // trailing checkbox, and the gap between title and trailing widget.
+    final availableTextWidth = (tileWidth - 100.0).clamp(1.0, double.infinity);
+
+    final singleLine = TextPainter(
+      text: TextSpan(text: title, style: titleStyle),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    final wrapped = TextPainter(
+      text: TextSpan(text: title, style: titleStyle),
+      textDirection: TextDirection.ltr,
+      maxLines: null,
+    )..layout(maxWidth: availableTextWidth);
+
+    final extraHeight = (wrapped.size.height - singleLine.size.height).clamp(0.0, double.infinity);
+    final baseHeight = isExpanded ? 88.0 : 68.0;
+    return baseHeight + extraHeight;
+  }
+
+  Widget _buildTimetableTile(Task task, List<TaskCompletion> completions, bool isExpanded) {
+    final isDone = _isTaskDoneEffective(task.id, completions);
+    final isActive = _isTaskActive(task, DateTime.now());
+
+    Color tileColor;
+    Color textColor;
+    Color subtitleColor;
+    Color checkColor;
+    Color activeColor;
+
+    if (isDone) {
+      tileColor = Colors.green;
+      textColor = Colors.black;
+      subtitleColor = Colors.black;
+      checkColor = Colors.green;
+      activeColor = Colors.black;
+    } else if (isActive) {
+      tileColor = Colors.white;
+      textColor = Colors.black;
+      subtitleColor = Colors.black;
+      checkColor = Colors.black;
+      activeColor = Colors.white;
+    } else {
+      tileColor = const Color(0xFF1E2D3D);
+      textColor = Colors.white;
+      subtitleColor = Colors.white;
+      checkColor = Colors.white;
+      activeColor = const Color(0xFF1E2D3D);
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(
+        color: tileColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ListTile(
+        contentPadding: isExpanded
+            ? const EdgeInsets.symmetric(vertical: 4, horizontal: 16)
+            : null,
+        title: Text(
+          task.title,
+          style: TextStyle(
+            color: textColor,
+            fontWeight: (isDone || isActive) ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        subtitle: Text(
+          "${task.startTime} - ${task.endTime}",
+          style: TextStyle(
+            color: subtitleColor,
+            fontSize: 12,
+          ),
+        ),
+        trailing: Checkbox(
+          activeColor: activeColor,
+          checkColor: checkColor,
+          side: BorderSide(color: textColor.withOpacity(0.6), width: 2),
+          value: isDone,
+          onChanged: (val) {
+            _toggleTaskCompletion(task.id, val ?? false);
+          },
+        ),
+      ),
     );
   }
 }

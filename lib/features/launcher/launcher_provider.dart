@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_info.dart';
 import 'launcher_service.dart';
 import '../app_locker/app_lock_provider.dart';
-import '../journal/journal_provider.dart';
 
 class LauncherState {
   final List<AppInfo> apps;
@@ -55,11 +54,6 @@ class LauncherNotifier extends StateNotifier<LauncherState> {
 
   void _handleEmergencyBypass(String packageName, int minutes) async {
     await _ref.read(appLockNotifierProvider.notifier).handleEmergencyBypass(packageName, minutes);
-    // handleEmergencyBypass writes the journal entry straight to Isar, which
-    // never touches journalNotifierProvider's in-memory state - so if the
-    // Journal page is already open, the new "Emergency Bypass" entry
-    // wouldn't show up until the page reloaded some other way. Refresh it.
-    await _ref.read(journalNotifierProvider.notifier).loadEntries();
   }
 
   Future<void> loadApps() async {

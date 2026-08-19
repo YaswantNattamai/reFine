@@ -9,7 +9,6 @@ import 'wallpaper_crop_page.dart';
 import '../launcher/launcher_provider.dart';
 import '../launcher/app_info.dart';
 import '../app_locker/app_lock_provider.dart';
-import '../../database/collections/locked_app.dart';
 
 class SystemSettingsPage extends ConsumerStatefulWidget {
   const SystemSettingsPage({super.key});
@@ -18,10 +17,7 @@ class SystemSettingsPage extends ConsumerStatefulWidget {
   ConsumerState<SystemSettingsPage> createState() => _SystemSettingsPageState();
 }
 
-class _SystemSettingsPageState extends ConsumerState<SystemSettingsPage> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  late TabController _tabController;
-  final _appSearchController = TextEditingController();
-  String _appSearchQuery = "";
+class _SystemSettingsPageState extends ConsumerState<SystemSettingsPage> with WidgetsBindingObserver {
   // Cached rather than called inline in FutureBuilder - this page's build()
   // reruns on every setting change (typing in the app search box, toggling
   // switches, etc.), and creating a fresh Future each time made the "Default
@@ -31,7 +27,6 @@ class _SystemSettingsPageState extends ConsumerState<SystemSettingsPage> with Si
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _isDefaultLauncherFuture = ref.read(launcherServiceProvider).isDefaultLauncher();
     WidgetsBinding.instance.addObserver(this);
   }
@@ -54,8 +49,6 @@ class _SystemSettingsPageState extends ConsumerState<SystemSettingsPage> with Si
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _tabController.dispose();
-    _appSearchController.dispose();
     super.dispose();
   }
 
@@ -67,117 +60,8 @@ class _SystemSettingsPageState extends ConsumerState<SystemSettingsPage> with Si
         title: const Text("System Settings", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white38,
-          tabs: const [
-            Tab(text: "App Locker Limits"),
-            Tab(text: "Launcher Config"),
-          ],
-        ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildAppLockerTab(context),
-          _buildLauncherConfigTab(context),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAppLockerTab(BuildContext context) {
-    final launcherState = ref.watch(launcherNotifierProvider);
-    final lockedApps = ref.watch(appLockNotifierProvider);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-      child: Column(
-        children: [
-          // App list search bar
-          TextField(
-            controller: _appSearchController,
-            style: const TextStyle(color: Colors.white),
-            onChanged: (val) {
-              setState(() {
-                _appSearchQuery = val.toLowerCase().trim();
-              });
-            },
-            decoration: InputDecoration(
-              hintText: "Search apps...",
-              hintStyle: const TextStyle(color: Colors.white30),
-              prefixIcon: const Icon(Icons.search, color: Colors.white54),
-              filled: true,
-              fillColor: const Color(0xFF161616),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Apps List
-          Expanded(
-            child: launcherState.isLoading
-                ? const Center(child: CircularProgressIndicator(color: Colors.white))
-                : () {
-                    final filteredApps = launcherState.apps.where((app) {
-                      return app.name.toLowerCase().contains(_appSearchQuery) ||
-                          app.packageName.toLowerCase().contains(_appSearchQuery);
-                    }).toList();
-
-                    if (filteredApps.isEmpty) {
-                      return const Center(
-                        child: Text("No apps found", style: TextStyle(color: Colors.white30)),
-                      );
-                    }
-
-                    return ListView.separated(
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: filteredApps.length,
-                      separatorBuilder: (context, index) => const Divider(color: Colors.white10),
-                      itemBuilder: (context, index) {
-                        final app = filteredApps[index];
-                        LockedApp? lockedApp;
-                        for (var la in lockedApps) {
-                          if (la.packageName == app.packageName) {
-                            lockedApp = la;
-                            break;
-                          }
-                        }
-
-                        final isLocked = lockedApp != null;
-                        final limit = isLocked ? lockedApp.dailyLimitMinutes : 0;
-
-                        return ListTile(
-                          key: ValueKey(app.packageName),
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            app.name,
-                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text(
-                            isLocked ? "Limit: $limit mins/day" : "Unrestricted",
-                            style: TextStyle(
-                              color: isLocked ? Colors.redAccent : Colors.white38,
-                              fontSize: 12,
-                            ),
-                          ),
-                          trailing: Icon(
-                            isLocked ? Icons.lock : Icons.lock_open,
-                            color: isLocked ? Colors.redAccent : Colors.white30,
-                          ),
-                          onTap: () => _showAppLimitDialog(context, app.name, app.packageName, limit, isLocked),
-                        );
-                      },
-                    );
-                  }(),
-          ),
-        ],
-      ),
+      body: _buildLauncherConfigTab(context),
     );
   }
 
@@ -650,72 +534,4 @@ class _SystemSettingsPageState extends ConsumerState<SystemSettingsPage> with Si
     );
   }
 
-  void _showAppLimitDialog(BuildContext context, String appName, String packageName, int currentLimit, bool isLocked) {
-    int localLimit = isLocked ? currentLimit : 15;
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF161616),
-          title: Text("Lock Limit: $appName", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                "Configure daily usage duration. App locker overlay pops up after this threshold is crossed.",
-                style: TextStyle(color: Colors.white60, fontSize: 13),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline, color: Colors.white),
-                    onPressed: () {
-                      if (localLimit > 5) {
-                        setDialogState(() => localLimit -= 5);
-                      }
-                    },
-                  ),
-                  Text(
-                    "$localLimit min",
-                    style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline, color: Colors.white),
-                    onPressed: () {
-                      if (localLimit < 360) {
-                        setDialogState(() => localLimit += 5);
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ],
-          ),
-          actions: [
-            if (isLocked)
-              TextButton(
-                onPressed: () {
-                  ref.read(appLockNotifierProvider.notifier).unlockApp(packageName);
-                  Navigator.pop(context);
-                },
-                child: const Text("REMOVE LIMIT", style: TextStyle(color: Colors.redAccent)),
-              ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("CANCEL", style: TextStyle(color: Colors.white54)),
-            ),
-            TextButton(
-              onPressed: () {
-                ref.read(appLockNotifierProvider.notifier).lockApp(packageName, localLimit);
-                Navigator.pop(context);
-              },
-              child: const Text("SET LIMIT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
