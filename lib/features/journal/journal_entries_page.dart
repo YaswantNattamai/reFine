@@ -56,7 +56,7 @@ class _JournalEntriesPageState extends ConsumerState<JournalEntriesPage> {
                 });
               },
               decoration: InputDecoration(
-                hintText: "Search thoughts and bypass logs...",
+                hintText: "Search thoughts...",
                 hintStyle: const TextStyle(color: Colors.white30),
                 prefixIcon: const Icon(Icons.search, color: Colors.white54),
                 filled: true,

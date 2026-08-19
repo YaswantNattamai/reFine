@@ -47,3 +47,5 @@ app.*.map.json
 # Local architecture notes - not for the public repo
 /EndtoEndArc.md
 /EndtoEndArc.text
+/InterviewGuide.md
+/ProjectTutorial.md
