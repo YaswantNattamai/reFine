@@ -10,11 +10,14 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.example.refine.MainActivity
@@ -205,12 +208,13 @@ class AppLockAccessibilityService : AccessibilityService() {
                     activePackageName?.let { pkg ->
                         val app = lockedAppsMap[pkg]
                         if (app != null && !excludedPackages.contains(pkg)) {
-                            val now = System.currentTimeMillis()
-                            if (now > app.bypassUntil) {
-                                app.todayUsageSeconds += 5
-                                // Trigger check
-                                checkActiveLock()
-                            }
+                            // Usage keeps counting the whole time the app is open,
+                            // including during an active bypass grace period - a
+                            // bypass only suppresses the lock overlay (handled in
+                            // checkActiveLock), it doesn't pause the clock. Screen
+                            // time reporting should always reflect real usage.
+                            app.todayUsageSeconds += 5
+                            checkActiveLock()
                         }
                     }
                 }
@@ -239,16 +243,36 @@ class AppLockAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkgName = event.packageName?.toString() ?: return
-        
+
+        // The on-screen keyboard opening (e.g. to type into the overlay's
+        // "Use for another..." field) fires its own window-state-changed
+        // event under the keyboard app's package, which isn't in
+        // lockedAppsMap - checkActiveLock() was treating that as "the
+        // foreground app changed to something unlocked" and removing the
+        // overlay, then immediately re-showing it once focus returned,
+        // producing a show/hide loop the user couldn't type through.
+        if (isInputMethodWindow()) return
+
         // Exclude our own package only when overlay is active to prevent layout loop crash,
         // but allow transitions when returning to the launcher Home screen
         if (pkgName == "com.example.refine" && overlayView != null) return
-        
+
         if (pkgName == previousPackageName) return
         previousPackageName = pkgName
-        
+
         activePackageName = pkgName
         checkActiveLock()
+    }
+
+    // True if an on-screen keyboard window is currently part of the window
+    // stack. Works for any IME (Gboard, SwiftKey, Samsung Keyboard, etc.),
+    // not just a hardcoded package name.
+    private fun isInputMethodWindow(): Boolean {
+        return try {
+            windows?.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD } == true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     override fun onInterrupt() {}
@@ -328,29 +352,60 @@ class AppLockAccessibilityService : AccessibilityService() {
         container.addView(titleView)
         container.addView(descView)
 
-        // Add Bypass buttons
-        val minutesOptions = listOf(15, 30, 60)
-        for (mins in minutesOptions) {
-            val button = Button(this).apply {
-                text = "Emergency Bypass ($mins min)"
-                setTextColor(Color.BLACK)
-                setBackgroundColor(Color.WHITE)
-                setPadding(0, 12, 0, 12)
-                
-                val layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    setMargins(0, 0, 0, 16)
-                }
-                this.layoutParams = layoutParams
+        // "Use for another <minutes>" - a label plus an inline number input,
+        // rather than a fixed set of preset-minute buttons.
+        val useForLabel = TextView(this).apply {
+            text = "Use for another..."
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 12)
+        }
+        container.addView(useForLabel)
 
-                setOnClickListener {
-                    applyBypass(packageName, mins)
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, 16) }
+        }
+
+        val minutesInput = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            hint = "minutes"
+            setHintTextColor(Color.parseColor("#808080"))
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#1E1E1E"))
+            gravity = Gravity.CENTER
+            setPadding(24, 24, 24, 24)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = 16
+            }
+        }
+        inputRow.addView(minutesInput)
+
+        val goButton = Button(this).apply {
+            text = "Go"
+            setTextColor(Color.BLACK)
+            setBackgroundColor(Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            setOnClickListener {
+                val minutes = minutesInput.text.toString().toIntOrNull()
+                if (minutes != null && minutes > 0) {
+                    applyBypass(packageName, minutes.coerceAtMost(1440))
+                } else {
+                    minutesInput.error = "Enter minutes"
                 }
             }
-            container.addView(button)
         }
+        inputRow.addView(goButton)
+
+        container.addView(inputRow)
 
         // Add Close/Go Home button
         val closeButton = Button(this).apply {

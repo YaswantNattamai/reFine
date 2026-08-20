@@ -19,6 +19,19 @@ class TimetableNotifier extends StateNotifier<AsyncValue<List<Task>>> {
     try {
       final isar = await _isarService.db;
       _taskRepository = TaskRepository(isar);
+      await _taskRepository.deleteExpiredOneTimeTasks(DateTime.now());
+      await loadTasks();
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+
+  // Re-run the expired-task sweep whenever the day rolls over (see
+  // currentDateProvider), so a one-time task disappears without requiring
+  // the app to be restarted.
+  Future<void> cleanupExpiredOneTimeTasks() async {
+    try {
+      await _taskRepository.deleteExpiredOneTimeTasks(DateTime.now());
       await loadTasks();
     } catch (e, stack) {
       state = AsyncValue.error(e, stack);
@@ -83,7 +96,16 @@ class TimetableNotifier extends StateNotifier<AsyncValue<List<Task>>> {
 
 final timetableNotifierProvider = StateNotifierProvider<TimetableNotifier, AsyncValue<List<Task>>>((ref) {
   final isarService = ref.watch(isarServiceProvider);
-  return TimetableNotifier(isarService);
+  final notifier = TimetableNotifier(isarService);
+  // currentDateProvider only emits a new value when the calendar day actually
+  // changes (it's deduped with .distinct()), so this fires once per midnight
+  // rollover - exactly when an expired one-time task should disappear.
+  ref.listen(currentDateProvider, (previous, next) {
+    if (previous != null) {
+      notifier.cleanupExpiredOneTimeTasks();
+    }
+  });
+  return notifier;
 });
 
 final todayTasksProvider = FutureProvider<List<Task>>((ref) async {

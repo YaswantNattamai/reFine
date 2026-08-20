@@ -49,6 +49,50 @@ class TaskRepository {
     });
   }
 
+  int _timeToMinutes(String timeStr) {
+    final parts = timeStr.split(':');
+    if (parts.length != 2) return 0;
+    final hour = int.tryParse(parts[0]) ?? 0;
+    final minute = int.tryParse(parts[1]) ?? 0;
+    return hour * 60 + minute;
+  }
+
+  // One-time (non-repeatable) tasks should disappear once their day is over
+  // - but a task that crosses midnight (e.g. 10 PM - 3 AM) is still relevant
+  // through the following morning, so it isn't "expired" until the day
+  // *after* that, not the literal calendar day it was created for.
+  Future<void> deleteExpiredOneTimeTasks(DateTime today) async {
+    final todayTruncated = DateTime(today.year, today.month, today.day);
+
+    final rawList = await isar.tasks.filter().isRepeatableEqualTo(false).findAll();
+    final oneTimeTasks = List<dynamic>.from(rawList).whereType<Task>().toList();
+
+    final expiredIds = <int>[];
+    for (final task in oneTimeTasks) {
+      final taskDate = task.date;
+      if (taskDate == null) continue;
+
+      final truncatedTaskDate = DateTime(taskDate.year, taskDate.month, taskDate.day);
+      final crossesMidnight = _timeToMinutes(task.startTime) > _timeToMinutes(task.endTime);
+      final lastActiveDate = crossesMidnight
+          ? truncatedTaskDate.add(const Duration(days: 1))
+          : truncatedTaskDate;
+
+      if (todayTruncated.isAfter(lastActiveDate)) {
+        expiredIds.add(task.id);
+      }
+    }
+
+    if (expiredIds.isEmpty) return;
+
+    await isar.writeTxn(() async {
+      for (final id in expiredIds) {
+        await isar.tasks.delete(id);
+        await isar.taskCompletions.filter().taskIdEqualTo(id).deleteAll();
+      }
+    });
+  }
+
   // Toggle completion inside an atomic transaction
   Future<void> toggleTaskCompletion(int taskId, DateTime date, bool completed) async {
     final truncatedDate = DateTime(date.year, date.month, date.day);
